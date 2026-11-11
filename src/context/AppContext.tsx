@@ -65,7 +65,6 @@ interface AppContextType {
   currentUser: AuthUser | null;
   loginWithGoogle: () => Promise<void>;
   loginWithEmail: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
-  signUpWithEmail: (email: string, pass: string, fullName: string, role: UserRole) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   isAuthModalOpen: boolean;
   setIsAuthModalOpen: (open: boolean) => void;
@@ -79,6 +78,21 @@ interface AppContextType {
   clearDbError: () => void;
   refreshFromSupabase: () => Promise<void>;
   seedInitialDataToSupabase: () => Promise<void>;
+
+  // Gestión de Usuarios y Accesos (Exclusivo Coordinador)
+  profiles: AuthUser[];
+  createUserByCoordinator: (params: {
+    email: string;
+    fullName: string;
+    role: UserRole;
+    password?: string;
+    teacherId?: string;
+    studentId?: string;
+    createTeacherProfile?: boolean;
+    createStudentProfile?: boolean;
+  }) => Promise<{ success: boolean; error?: string; tempPassword?: string }>;
+  updateUserRole: (userId: string, newRole: UserRole) => Promise<void>;
+  deleteUserAccess: (userId: string) => Promise<void>;
 
   teachers: Teacher[];
   activities: Activity[];
@@ -167,6 +181,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [dbError, setDbError] = useState<string | null>(null);
 
   // Colecciones sincronizadas en tiempo real con Supabase
+  const [profiles, setProfiles] = useState<AuthUser[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -181,7 +196,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     console.error(`[Supabase Error] ${contextMsg}:`, error);
     let msg = error?.message || 'Error de comunicación con Supabase';
     if (error?.code === '42501' || msg.includes('permission denied') || msg.includes('row-level security')) {
-      msg = `Permiso RLS denegado: Tu usuario actual no tiene permisos suficientes para ${contextMsg.toLowerCase()}. Inicia sesión con la cuenta adecuada.`;
+      msg = `Permiso RLS denegado: Tu usuario actual no tiene permisos suficientes para ${contextMsg.toLowerCase()}. Inicia sesión con la cuenta de Coordinador.`;
     }
     setDbError(msg);
   }, []);
@@ -202,7 +217,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       setIsLoadingDb(true);
 
-      // 1. Cargar Monitores
+      // 1. Cargar Usuarios / Perfiles Autorizados
+      const profilesRes = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+      if (!profilesRes.error && profilesRes.data) {
+        setProfiles(
+          profilesRes.data.map(p => ({
+            id: p.id,
+            email: p.email,
+            name: p.full_name,
+            role: p.role as UserRole,
+            photoURL: p.avatar_url || undefined,
+            teacherId: p.teacher_id || undefined,
+            studentId: p.student_id || undefined,
+            provider: 'email',
+            createdAt: p.created_at
+          }))
+        );
+      }
+
+      // 2. Cargar Monitores
       const teachersRes = await supabase.from('teachers').select('*').order('name');
       if (teachersRes.error) {
         handleSupabaseError('Cargar monitores', teachersRes.error);
@@ -214,7 +247,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
 
-      // 2. Cargar Talleres / Actividades
+      // 3. Cargar Talleres / Actividades
       const activitiesRes = await supabase.from('activities').select('*').order('name');
       if (activitiesRes.error) {
         handleSupabaseError('Cargar talleres', activitiesRes.error);
@@ -223,7 +256,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActivities(loadedActivities);
       }
 
-      // 3. Cargar Alumnos y Matrículas
+      // 4. Cargar Alumnos y Matrículas
       const [studentsRes, enrollmentsRes] = await Promise.all([
         supabase.from('students').select('*').order('name'),
         supabase.from('student_enrollments').select('*')
@@ -240,7 +273,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
 
-      // 4. Cargar Pagos y Recibos
+      // 5. Cargar Pagos y Recibos
       const paymentsRes = await supabase
         .from('payments')
         .select('*, students(name), activities(name)')
@@ -253,7 +286,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setPayments(loadedPayments);
       }
 
-      // 5. Cargar Gastos del Centro
+      // 6. Cargar Gastos del Centro
       const expensesRes = await supabase
         .from('center_expenses')
         .select('*')
@@ -266,7 +299,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setExpenses(loadedExpenses);
       }
 
-      // 6. Cargar Sesiones y Asistencias
+      // 7. Cargar Sesiones y Asistencias
       const [sessionsRes, attendancesRes] = await Promise.all([
         supabase.from('class_sessions').select('*').order('date', { ascending: false }),
         supabase.from('session_attendances').select('*, students(name)')
@@ -280,7 +313,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSessions(loadedSessions);
       }
 
-      // 7. Cargar Liquidaciones de Monitores
+      // 8. Cargar Liquidaciones de Monitores
       const payoutsRes = await supabase
         .from('teacher_payouts')
         .select('*')
@@ -300,50 +333,96 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [handleSupabaseError, currentTeacherId, currentStudentId]);
 
-  // Cargar perfil del usuario desde Supabase auth.users y public.profiles
+  // Cargar perfil del usuario desde Supabase auth.users y public.profiles con control estricto de autorización (Whitelisting)
   const syncUserProfile = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
     try {
-      const { data: profile, error } = await supabase
+      if (!userEmail) {
+        await supabase.auth.signOut();
+        setCurrentUser(null);
+        return;
+      }
+
+      const emailNormalized = userEmail.toLowerCase().trim();
+      const isMasterAdmin = emailNormalized === 'cristinoconde@gmail.com';
+
+      // 1. Buscar en profiles por ID o por email
+      const { data: profileByUid } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
-        console.warn('Error fetching profile:', error);
+      const { data: profileByEmail } = await supabase
+        .from('profiles')
+        .select('*')
+        .ilike('email', emailNormalized)
+        .maybeSingle();
+
+      const existingProfile = profileByUid || profileByEmail;
+
+      // 2. Buscar si el correo fue dado de alta en profesores o alumnos
+      const { data: teacherMatch } = await supabase
+        .from('teachers')
+        .select('*')
+        .ilike('email', emailNormalized)
+        .maybeSingle();
+
+      const { data: studentMatch } = await supabase
+        .from('students')
+        .select('*')
+        .ilike('email', emailNormalized)
+        .maybeSingle();
+
+      // Comprobar si el usuario fue autorizado previamente por el Coordinador
+      const isWhitelisted = isMasterAdmin || Boolean(existingProfile) || Boolean(teacherMatch) || Boolean(studentMatch);
+
+      if (!isWhitelisted) {
+        console.warn(`[TRISKELL AUTH] Acceso no autorizado para correo: ${emailNormalized}`);
+        await supabase.auth.signOut();
+        setCurrentUser(null);
+        setDbError(`Acceso Denegado: El correo "${userEmail}" no ha sido dado de alta por la Coordinación de TRISKELL. Solicita al administrador tu alta para poder acceder.`);
+        return;
       }
 
-      let role: UserRole = (profile?.role as UserRole) || (userMeta?.role as UserRole) || 'admin';
-      let fullName = profile?.full_name || userMeta?.full_name || userMeta?.name || userEmail?.split('@')[0] || 'Usuario';
-      let avatarUrl = profile?.avatar_url || userMeta?.avatar_url || userMeta?.picture || undefined;
-      let teacherId = profile?.teacher_id || undefined;
-      let studentId = profile?.student_id || undefined;
-
-      // Si no existe perfil en la tabla de profiles, crearlo
-      if (!profile) {
-        const { error: insertErr } = await supabase.from('profiles').upsert({
-          id: userId,
-          email: userEmail || '',
-          full_name: fullName,
-          avatar_url: avatarUrl || null,
-          role: role,
-          teacher_id: teacherId || null,
-          student_id: studentId || null
-        });
-        if (insertErr) {
-          console.warn('Error creating default profile:', insertErr);
-        }
+      // Determinar rol
+      let role: UserRole = 'student';
+      if (isMasterAdmin) {
+        role = 'admin';
+      } else if (existingProfile?.role) {
+        role = existingProfile.role as UserRole;
+      } else if (teacherMatch && studentMatch) {
+        role = 'teacher_student';
+      } else if (teacherMatch) {
+        role = 'teacher';
+      } else if (studentMatch) {
+        role = 'student';
       }
+
+      const fullName = existingProfile?.full_name || teacherMatch?.name || studentMatch?.name || userMeta?.full_name || userMeta?.name || userEmail.split('@')[0] || 'Usuario';
+      const avatarUrl = existingProfile?.avatar_url || teacherMatch?.avatar_url || userMeta?.avatar_url || userMeta?.picture || undefined;
+      const teacherId = existingProfile?.teacher_id || teacherMatch?.id || undefined;
+      const studentId = existingProfile?.student_id || studentMatch?.id || undefined;
+
+      // Vincular o actualizar la fila en profiles con el auth user id
+      await supabase.from('profiles').upsert({
+        id: userId,
+        email: emailNormalized,
+        full_name: fullName,
+        avatar_url: avatarUrl || null,
+        role: role,
+        teacher_id: teacherId || null,
+        student_id: studentId || null
+      });
 
       const authUserObj: AuthUser = {
         id: userId,
-        email: userEmail || '',
+        email: emailNormalized,
         name: fullName,
         photoURL: avatarUrl,
         role: role,
         teacherId: teacherId,
         studentId: studentId,
-        provider: 'google',
+        provider: userMeta?.iss?.includes('google') ? 'google' : 'email',
         lastLogin: new Date().toISOString()
       };
 
@@ -352,10 +431,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (teacherId) setCurrentTeacherId(teacherId);
       if (studentId) setCurrentStudentId(studentId);
 
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error synchronizing user profile:', e);
+      handleSupabaseError('Sincronizar perfil de usuario', e);
     }
-  }, []);
+  }, [handleSupabaseError]);
 
   // Suscripción al estado de Auth de Supabase
   useEffect(() => {
@@ -367,7 +447,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (session?.user) {
         syncUserProfile(session.user.id, session.user.email, session.user.user_metadata);
       } else {
-        // Usuario demo inicial si no hay sesión activa aún en Supabase
+        // Cuenta predeterminada de Google para Cristino si aún no hay sesión iniciada
         setCurrentUser({
           id: 'demo-admin-cristino',
           email: 'cristinoconde@gmail.com',
@@ -399,7 +479,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     refreshFromSupabase();
 
-    // Canal Realtime para escuchar cambios en cualquier tabla de la base de datos
     const channel = supabase
       .channel('triskell_db_realtime')
       .on('postgres_changes', { event: '*', schema: 'public' }, () => {
@@ -449,52 +528,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const loginWithEmail = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
     clearDbError();
     try {
+      const emailNorm = email.toLowerCase().trim();
+
+      // Verificar primero que el correo esté autorizado por el coordinador
+      const isMaster = emailNorm === 'cristinoconde@gmail.com';
+      const [profileCheck, teacherCheck, studentCheck] = await Promise.all([
+        supabase.from('profiles').select('id').ilike('email', emailNorm).maybeSingle(),
+        supabase.from('teachers').select('id').ilike('email', emailNorm).maybeSingle(),
+        supabase.from('students').select('id').ilike('email', emailNorm).maybeSingle()
+      ]);
+
+      const isWhitelisted = isMaster || Boolean(profileCheck.data) || Boolean(teacherCheck.data) || Boolean(studentCheck.data);
+
+      if (!isWhitelisted) {
+        return {
+          success: false,
+          error: `Acceso no autorizado: El correo "${email}" no figura en el registro de usuarios de la asociación. Contacta con la Coordinación para que dé de alta tu cuenta.`
+        };
+      }
+
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: emailNorm,
         password: pass
       });
+
       if (error) {
         handleSupabaseError('Inicio de sesión con Email', error);
         return { success: false, error: error.message };
       }
+
       if (data.user) {
         await syncUserProfile(data.user.id, data.user.email, data.user.user_metadata);
       }
       return { success: true };
     } catch (e: any) {
       return { success: false, error: e.message || 'Error de autenticación' };
-    }
-  };
-
-  // Registro con Email y Contraseña mediante Supabase
-  const signUpWithEmail = async (
-    email: string,
-    pass: string,
-    fullName: string,
-    role: UserRole
-  ): Promise<{ success: boolean; error?: string }> => {
-    clearDbError();
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password: pass,
-        options: {
-          data: {
-            full_name: fullName,
-            role: role
-          }
-        }
-      });
-      if (error) {
-        handleSupabaseError('Registro con Email', error);
-        return { success: false, error: error.message };
-      }
-      if (data.user) {
-        await syncUserProfile(data.user.id, data.user.email, data.user.user_metadata);
-      }
-      return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e.message || 'Error de registro' };
     }
   };
 
@@ -505,6 +573,137 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCurrentUser(null);
     } catch (e) {
       console.error('Error logging out:', e);
+    }
+  };
+
+  // ==============================================================================
+  // GESTIÓN EXCLUSIVA DE USUARIOS POR EL COORDINADOR (auth.users + profiles)
+  // ==============================================================================
+
+  const createUserByCoordinator = async (params: {
+    email: string;
+    fullName: string;
+    role: UserRole;
+    password?: string;
+    teacherId?: string;
+    studentId?: string;
+    createTeacherProfile?: boolean;
+    createStudentProfile?: boolean;
+  }): Promise<{ success: boolean; error?: string; tempPassword?: string }> => {
+    clearDbError();
+    try {
+      const emailNorm = params.email.toLowerCase().trim();
+      const tempPassword = params.password || `Triskell${Math.floor(1000 + Math.random() * 9000)}!`;
+
+      // 1. Crear en auth.users con Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: emailNorm,
+        password: tempPassword,
+        options: {
+          data: {
+            full_name: params.fullName.trim(),
+            role: params.role
+          }
+        }
+      });
+
+      let linkedTeacherId = params.teacherId;
+      let linkedStudentId = params.studentId;
+
+      // 2. Si se solicitó crear ficha de monitor automática
+      if (params.createTeacherProfile && !linkedTeacherId) {
+        const { data: newTeacher } = await supabase
+          .from('teachers')
+          .insert([{
+            name: params.fullName.trim(),
+            email: emailNorm,
+            payment_scheme: 'per_class',
+            rate_per_class: 25,
+            fixed_monthly_rate: 0,
+            revenue_share_percent: 60,
+            preferred_payment_method: 'cash',
+            collection_type: 'personal',
+            active: true
+          }])
+          .select()
+          .single();
+        if (newTeacher) linkedTeacherId = newTeacher.id;
+      }
+
+      // 3. Si se solicitó crear ficha de alumno automática
+      if (params.createStudentProfile && !linkedStudentId) {
+        const { data: newStudent } = await supabase
+          .from('students')
+          .insert([{
+            name: params.fullName.trim(),
+            email: emailNorm,
+            status: 'active',
+            registered_at: new Date().toISOString().split('T')[0]
+          }])
+          .select()
+          .single();
+        if (newStudent) linkedStudentId = newStudent.id;
+      }
+
+      // 4. Registrar o actualizar en la tabla public.profiles
+      const userId = authData.user?.id;
+      if (userId) {
+        await supabase.from('profiles').upsert({
+          id: userId,
+          email: emailNorm,
+          full_name: params.fullName.trim(),
+          role: params.role,
+          teacher_id: linkedTeacherId || null,
+          student_id: linkedStudentId || null
+        });
+      }
+
+      await refreshFromSupabase();
+      return { success: true, tempPassword };
+
+    } catch (err: any) {
+      console.error('Error creating user by coordinator:', err);
+      return { success: false, error: err.message || 'Error al registrar el usuario' };
+    }
+  };
+
+  const updateUserRole = async (userId: string, newRole: UserRole) => {
+    clearDbError();
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ role: newRole })
+        .eq('id', userId);
+
+      if (error) {
+        handleSupabaseError('Actualizar rol de usuario', error);
+        return;
+      }
+
+      setProfiles(prev =>
+        prev.map(p => (p.id === userId ? { ...p, role: newRole } : p))
+      );
+    } catch (e: any) {
+      handleSupabaseError('Actualizar rol', e);
+    }
+  };
+
+  const deleteUserAccess = async (userId: string) => {
+    clearDbError();
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', userId);
+
+      if (error) {
+        handleSupabaseError('Revocar acceso de usuario', error);
+        return;
+      }
+
+      setProfiles(prev => prev.filter(p => p.id !== userId));
+    } catch (e: any) {
+      handleSupabaseError('Revocar acceso', e);
     }
   };
 
@@ -641,7 +840,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (newStudentRow) {
-      // Inscribir en las actividades seleccionadas
       if (student.activities && student.activities.length > 0) {
         const enrollmentsDb = student.activities.map(act => ({
           student_id: newStudentRow.id,
@@ -673,7 +871,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    // Si actualizan matrículas
     if (updates.activities) {
       await supabase.from('student_enrollments').delete().eq('student_id', id);
       if (updates.activities.length > 0) {
@@ -935,7 +1132,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     clearDbError();
     setIsLoadingDb(true);
     try {
-      // 1. Insertar Monitores
       const teachersPayload = INITIAL_TEACHERS.map(t => ({
         name: t.name,
         email: t.email,
@@ -959,7 +1155,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         tMap[INITIAL_TEACHERS[idx].id] = ct.id;
       });
 
-      // 2. Insertar Talleres
       const activitiesPayload = INITIAL_ACTIVITIES.map(a => ({
         name: a.name,
         description: a.description,
@@ -984,7 +1179,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         aMap[INITIAL_ACTIVITIES[idx].id] = ca.id;
       });
 
-      // 3. Insertar Alumnos
       const studentsPayload = INITIAL_STUDENTS.map(s => ({
         name: s.name,
         email: s.email,
@@ -996,7 +1190,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const { data: createdStudents, error: sErr } = await supabase.from('students').insert(studentsPayload).select();
       if (sErr) throw sErr;
 
-      // 4. Insertar Matrículas
       const enrollmentsPayload: any[] = [];
       INITIAL_STUDENTS.forEach((origS, sIdx) => {
         const newStudentId = createdStudents?.[sIdx]?.id;
@@ -1019,7 +1212,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await supabase.from('student_enrollments').insert(enrollmentsPayload);
       }
 
-      // 5. Insertar Gastos
       const expensesPayload = INITIAL_EXPENSES.map(e => ({
         title: e.title,
         category: e.category,
@@ -1200,7 +1392,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentUser,
         loginWithGoogle,
         loginWithEmail,
-        signUpWithEmail,
         logout,
         isAuthModalOpen,
         setIsAuthModalOpen,
@@ -1211,6 +1402,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         clearDbError,
         refreshFromSupabase,
         seedInitialDataToSupabase,
+        profiles,
+        createUserByCoordinator,
+        updateUserRole,
+        deleteUserAccess,
         teachers,
         activities,
         students,

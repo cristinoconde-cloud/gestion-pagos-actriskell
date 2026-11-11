@@ -1,18 +1,16 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { UserRole } from '../types';
 import {
   X,
-  Check,
   ShieldCheck,
   LogOut,
   LogIn,
-  UserPlus,
   AlertCircle,
   Building,
   GraduationCap,
   Sparkles,
-  User
+  Lock,
+  Mail
 } from 'lucide-react';
 
 interface GoogleAuthModalProps {
@@ -25,23 +23,15 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
     currentUser,
     loginWithGoogle,
     loginWithEmail,
-    signUpWithEmail,
     logout,
     currentRole,
-    setCurrentRole,
-    teachers,
-    students
+    setCurrentRole
   } = useApp();
 
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [roleToRegister, setRoleToRegister] = useState<UserRole>('admin');
-
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -60,36 +50,19 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
   const handleEmailAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
-      setErrorMessage('Por favor, introduce tu correo y contraseña.');
+      setErrorMessage('Introduce tu correo y contraseña.');
       return;
     }
 
     setIsSubmitting(true);
     setErrorMessage(null);
-    setSuccessMessage(null);
 
     try {
-      if (authMode === 'login') {
-        const res = await loginWithEmail(email, password);
-        if (!res.success) {
-          setErrorMessage(res.error || 'Credenciales incorrectas o usuario no encontrado en Supabase.');
-        } else {
-          setSuccessMessage('¡Sesión iniciada con éxito!');
-          setTimeout(() => onClose(), 800);
-        }
+      const res = await loginWithEmail(email, password);
+      if (!res.success) {
+        setErrorMessage(res.error || 'Credenciales incorrectas o correo no autorizado.');
       } else {
-        if (!fullName.trim()) {
-          setErrorMessage('Por favor, indica tu nombre completo.');
-          setIsSubmitting(false);
-          return;
-        }
-        const res = await signUpWithEmail(email, password, fullName.trim(), roleToRegister);
-        if (!res.success) {
-          setErrorMessage(res.error || 'Error al crear la cuenta en Supabase.');
-        } else {
-          setSuccessMessage('¡Cuenta creada con éxito en Supabase Auth y tabla de perfiles!');
-          setTimeout(() => onClose(), 1000);
-        }
+        onClose();
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'Error en la autenticación.');
@@ -110,10 +83,10 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                Autenticación & Perfil (Supabase Auth)
+                Acceso a TRISKELL
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Gestión de usuarios y permisos basados en PostgreSQL RLS
+                Identificación de Socios, Monitores y Coordinación
               </p>
             </div>
           </div>
@@ -168,58 +141,51 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                 </div>
               </div>
 
-              {/* Selector de Rol asignado en Supabase Profiles */}
-              <div className="pt-2 border-t border-emerald-200 dark:border-emerald-900/60">
-                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Cambiar Rol Activo (sincronizado con tabla profiles):
-                </label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setCurrentRole('admin')}
-                    className={`rounded-lg px-2.5 py-1.5 text-left border transition ${
-                      currentRole === 'admin'
-                        ? 'bg-emerald-600 text-white font-bold border-emerald-600 shadow-xs'
-                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                    }`}
-                  >
-                    👑 Coordinador
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentRole('teacher')}
-                    className={`rounded-lg px-2.5 py-1.5 text-left border transition ${
-                      currentRole === 'teacher'
-                        ? 'bg-indigo-600 text-white font-bold border-indigo-600 shadow-xs'
-                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                    }`}
-                  >
-                    🎓 Monitor
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentRole('student')}
-                    className={`rounded-lg px-2.5 py-1.5 text-left border transition ${
-                      currentRole === 'student'
-                        ? 'bg-emerald-600 text-white font-bold border-emerald-600 shadow-xs'
-                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                    }`}
-                  >
-                    🎒 Alumno
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentRole('teacher_student')}
-                    className={`rounded-lg px-2.5 py-1.5 text-left border transition ${
-                      currentRole === 'teacher_student'
-                        ? 'bg-indigo-600 text-white font-bold border-indigo-600 shadow-xs'
-                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                    }`}
-                  >
-                    ⭐ Monitor-Alumno
-                  </button>
+              {/* Si es coordinador o híbrido, permitir alternar vista */}
+              {(currentUser.role === 'admin' || currentUser.role === 'teacher_student') && (
+                <div className="pt-2 border-t border-emerald-200 dark:border-emerald-900/60">
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Alternar Vista Activa:
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {currentUser.role === 'admin' && (
+                      <button
+                        type="button"
+                        onClick={() => setCurrentRole('admin')}
+                        className={`rounded-lg px-2.5 py-1.5 text-left border transition ${
+                          currentRole === 'admin'
+                            ? 'bg-emerald-600 text-white font-bold border-emerald-600 shadow-xs'
+                            : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        👑 Coordinador
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setCurrentRole('teacher')}
+                      className={`rounded-lg px-2.5 py-1.5 text-left border transition ${
+                        currentRole === 'teacher'
+                          ? 'bg-indigo-600 text-white font-bold border-indigo-600 shadow-xs'
+                          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      🎓 Monitor
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentRole('student')}
+                      className={`rounded-lg px-2.5 py-1.5 text-left border transition ${
+                        currentRole === 'student'
+                          ? 'bg-emerald-600 text-white font-bold border-emerald-600 shadow-xs'
+                          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      🎒 Alumno
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <button
                 type="button"
@@ -230,12 +196,12 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                 className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 py-2 font-bold hover:bg-rose-100 transition"
               >
                 <LogOut className="h-4 w-4" />
-                <span>Cerrar Sesión en Supabase</span>
+                <span>Cerrar Sesión</span>
               </button>
             </div>
           )}
 
-          {/* Avisos de error o éxito */}
+          {/* Avisos de error */}
           {errorMessage && (
             <div className="rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 p-3 text-rose-700 dark:text-rose-300 flex items-start gap-2">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
@@ -243,14 +209,15 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
             </div>
           )}
 
-          {successMessage && (
-            <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 p-3 text-emerald-700 dark:text-emerald-300 flex items-start gap-2">
-              <Check className="h-4 w-4 shrink-0 mt-0.5" />
-              <p className="leading-relaxed">{successMessage}</p>
-            </div>
-          )}
+          {/* Aviso de Registro Restringido */}
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850 p-3 flex items-start gap-2.5 text-slate-600 dark:text-slate-400">
+            <Lock className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+            <p className="text-[11px] leading-relaxed">
+              El acceso a TRISKELL es restringido. Las altas de alumnos y monitores se gestionan exclusivamente desde la Coordinación.
+            </p>
+          </div>
 
-          {/* Botón de Google OAuth directo con Supabase */}
+          {/* Opción 1: Botón de Google OAuth */}
           <div className="space-y-2">
             <button
               type="button"
@@ -276,8 +243,11 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              <span>Continuar con Cuenta de Google</span>
+              <span>Acceder con Cuenta de Google</span>
             </button>
+            <p className="text-[10px] text-center text-slate-400">
+              (El correo debe coincidir con el dado de alta por la coordinación)
+            </p>
           </div>
 
           <div className="relative flex items-center justify-center py-1">
@@ -288,74 +258,8 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
             <div className="border-t border-slate-200 dark:border-slate-800 w-full" />
           </div>
 
-          {/* Pestañas Iniciar Sesión vs Registrarse */}
-          <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 font-semibold">
-            <button
-              type="button"
-              onClick={() => {
-                setAuthMode('login');
-                setErrorMessage(null);
-              }}
-              className={`flex-1 py-1.5 rounded-lg transition text-center ${
-                authMode === 'login'
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-bold'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              Iniciar Sesión
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setAuthMode('signup');
-                setErrorMessage(null);
-              }}
-              className={`flex-1 py-1.5 rounded-lg transition text-center ${
-                authMode === 'signup'
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-bold'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              Crear Cuenta
-            </button>
-          </div>
-
-          {/* Formulario de Email y Contraseña */}
+          {/* Formulario de Email y Contraseña (Solo Iniciar Sesión, sin autoregistro) */}
           <form onSubmit={handleEmailAuthSubmit} className="space-y-3">
-            {authMode === 'signup' && (
-              <>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Nombre Completo
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. Cristino Conde"
-                    value={fullName}
-                    onChange={e => setFullName(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white font-medium focus:outline-emerald-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Rol Inicial en la Asociación
-                  </label>
-                  <select
-                    value={roleToRegister}
-                    onChange={e => setRoleToRegister(e.target.value as UserRole)}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white font-medium focus:outline-emerald-500"
-                  >
-                    <option value="admin">Coordinador General</option>
-                    <option value="teacher">Monitor de Talleres</option>
-                    <option value="student">Alumno / Socio</option>
-                    <option value="teacher_student">Monitor-Alumno</option>
-                  </select>
-                </div>
-              </>
-            )}
-
             <div>
               <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Correo Electrónico
@@ -363,7 +267,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
               <input
                 type="email"
                 required
-                placeholder="usuario@asociacion.es"
+                placeholder="tu.correo@asociacion.es"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white font-medium focus:outline-emerald-500"
@@ -377,7 +281,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
               <input
                 type="password"
                 required
-                placeholder="Mínimo 6 caracteres"
+                placeholder="Contraseña facilitada por coordinación"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white font-medium focus:outline-emerald-500"
@@ -389,17 +293,8 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
               disabled={isSubmitting}
               className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 font-bold text-white shadow-md shadow-emerald-600/20 hover:bg-emerald-700 transition min-h-[44px]"
             >
-              {authMode === 'login' ? (
-                <>
-                  <LogIn className="h-4 w-4" />
-                  <span>{isSubmitting ? 'Accediendo...' : 'Iniciar Sesión'}</span>
-                </>
-              ) : (
-                <>
-                  <UserPlus className="h-4 w-4" />
-                  <span>{isSubmitting ? 'Creando...' : 'Registrar Cuenta en Supabase'}</span>
-                </>
-              )}
+              <LogIn className="h-4 w-4" />
+              <span>{isSubmitting ? 'Verificando...' : 'Iniciar Sesión'}</span>
             </button>
           </form>
 

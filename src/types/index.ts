@@ -13,8 +13,9 @@ export interface AuthUser {
   role: UserRole;
   teacherId?: string; // Si es monitor, vincula a su perfil de profesor
   studentId?: string; // Si es alumno, vincula a su ficha de estudiante
-  provider: 'google';
-  lastLogin: string;
+  provider?: 'google' | 'email';
+  lastLogin?: string;
+  createdAt?: string;
 }
 
 export interface Teacher {

@@ -18,6 +18,7 @@ import { AddSessionModal } from './components/AddSessionModal';
 import { EnrollStudentModal } from './components/EnrollStudentModal';
 import { SupabaseConfigModal } from './components/SupabaseConfigModal';
 import { GoogleAuthModal } from './components/GoogleAuthModal';
+import { UserManagementModal } from './components/UserManagementModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { PaymentRecord, Student, Teacher, Activity } from './types';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
@@ -37,6 +38,7 @@ const MainAppContent: React.FC = () => {
 
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [isSupabaseConfigOpen, setIsSupabaseConfigOpen] = useState(false);
+  const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
 
   // Estados de modales
   const [isRecordPaymentOpen, setIsRecordPaymentOpen] = useState(false);
@@ -104,6 +106,7 @@ const MainAppContent: React.FC = () => {
         onOpenAddExpense={() => setIsAddExpenseOpen(true)}
         onOpenAddSession={() => handleOpenAddSession()}
         onOpenSupabaseModal={() => setIsSupabaseConfigOpen(true)}
+        onOpenUserManagement={() => setIsUserManagementOpen(true)}
       />
 
       <main className="flex-1 mx-auto max-w-7xl w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 md:pb-8">
@@ -301,6 +304,14 @@ const MainAppContent: React.FC = () => {
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
       />
+
+      {/* Modal de Gestión de Usuarios y Accesos para el Coordinador */}
+      {isUserManagementOpen && (
+        <UserManagementModal
+          isOpen={isUserManagementOpen}
+          onClose={() => setIsUserManagementOpen(false)}
+        />
+      )}
 
       {/* Barra de Navegación Inferior Nativa en Móviles */}
       <MobileBottomNav

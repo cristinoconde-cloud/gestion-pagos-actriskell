@@ -25,6 +25,7 @@ interface HeaderProps {
   onOpenAddExpense: () => void;
   onOpenAddSession: () => void;
   onOpenSupabaseModal: () => void;
+  onOpenUserManagement: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -35,7 +36,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAddTeacher,
   onOpenAddExpense,
   onOpenAddSession,
-  onOpenSupabaseModal
+  onOpenSupabaseModal,
+  onOpenUserManagement
 }) => {
   const {
     selectedPeriod,
@@ -267,6 +269,19 @@ export const Header: React.FC<HeaderProps> = ({
                     <span>🎓</span>
                     <span className="font-medium">Alta de Monitor</span>
                   </button>
+
+                  {currentRole === 'admin' && (
+                    <button
+                      onClick={() => {
+                        setShowNewMenu(false);
+                        onOpenUserManagement();
+                      }}
+                      className="w-full text-left rounded-lg px-3 py-2 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 flex items-center gap-2 border-t border-indigo-100 dark:border-indigo-900/60 font-semibold"
+                    >
+                      <span>🛡️</span>
+                      <span>Alta de Usuario & Acceso</span>
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -339,6 +354,18 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="hidden xl:inline text-[11px] font-bold">Supabase Cloud</span>
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse hidden sm:inline-block" />
             </button>
+
+            {/* Gestión de Usuarios (Exclusivo Coordinador) */}
+            {currentRole === 'admin' && (
+              <button
+                onClick={onOpenUserManagement}
+                title="Gestión de Usuarios y Accesos (Solo Coordinación)"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/50 dark:bg-indigo-950/20 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition"
+              >
+                <UserCheck className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span className="hidden xl:inline text-[11px] font-bold">Usuarios & Permisos</span>
+              </button>
+            )}
 
             {/* Botón de Cuenta de Google */}
             <button
