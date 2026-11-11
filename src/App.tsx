@@ -20,9 +20,20 @@ import { SupabaseConfigModal } from './components/SupabaseConfigModal';
 import { GoogleAuthModal } from './components/GoogleAuthModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { PaymentRecord, Student, Teacher, Activity } from './types';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 const MainAppContent: React.FC = () => {
-  const { currentRole, currentTeacherId, teachers, isAuthModalOpen, setIsAuthModalOpen } = useApp();
+  const {
+    currentRole,
+    currentTeacherId,
+    teachers,
+    isAuthModalOpen,
+    setIsAuthModalOpen,
+    dbError,
+    clearDbError,
+    refreshFromSupabase,
+    isLoadingDb
+  } = useApp();
 
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [isSupabaseConfigOpen, setIsSupabaseConfigOpen] = useState(false);
@@ -96,6 +107,34 @@ const MainAppContent: React.FC = () => {
       />
 
       <main className="flex-1 mx-auto max-w-7xl w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 md:pb-8">
+        {/* Banner de Errores de Base de Datos y Permisos RLS */}
+        {dbError && (
+          <div className="mb-4 rounded-2xl border border-rose-300 dark:border-rose-900 bg-rose-50/95 dark:bg-rose-950/80 p-4 text-xs shadow-lg backdrop-blur-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
+            <div className="flex items-start gap-3 text-rose-800 dark:text-rose-200">
+              <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
+              <div>
+                <p className="font-bold text-sm">Aviso de Base de Datos Supabase / RLS</p>
+                <p className="mt-0.5 leading-relaxed">{dbError}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsAuthModalOpen(true)}
+                className="rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold px-3 py-1.5 transition text-xs shadow-xs"
+              >
+                Autenticar en Supabase
+              </button>
+              <button
+                type="button"
+                onClick={clearDbError}
+                className="rounded-xl border border-rose-300 dark:border-rose-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-semibold px-3 py-1.5 transition text-xs hover:bg-rose-50"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        )}
         {currentTab === 'dashboard' && (
           <DashboardView
             onOpenRecordPayment={handleOpenRecordPayment}

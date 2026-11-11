@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Teacher,
   Activity,
@@ -11,6 +11,21 @@ import {
   PaymentMethod,
   AuthUser
 } from '../types';
+import {
+  supabase,
+  mapDbTeacherToTeacher,
+  mapTeacherToDb,
+  mapDbActivityToActivity,
+  mapActivityToDb,
+  mapDbStudentToStudent,
+  mapDbPaymentToPayment,
+  mapPaymentToDb,
+  mapDbSessionToSession,
+  mapDbExpenseToExpense,
+  mapExpenseToDb,
+  mapDbPayoutToPayout,
+  mapPayoutToDb
+} from '../lib/supabase';
 import {
   INITIAL_TEACHERS,
   INITIAL_ACTIVITIES,
@@ -26,11 +41,11 @@ export interface TeacherFinancialSummary {
   classesCount: number;
   studentsCount: number;
   grossActivityRevenue: number;
-  calculatedDue: number; // lo que le corresponde según su contrato
-  collectedInHand: number; // lo que el monitor ya cobró físicamente en mano
-  alreadySettled: number; // lo que ya se le pagó/transfirió formalmente este mes
-  balanceToPay: number; // saldo pendiente a transferirle (calculado - cobrado en mano - ya pagado)
-  status: 'settled' | 'pending' | 'surplus'; // si cobró de más en mano, surplus
+  calculatedDue: number;
+  collectedInHand: number;
+  alreadySettled: number;
+  balanceToPay: number;
+  status: 'settled' | 'pending' | 'surplus';
 }
 
 interface AppContextType {
@@ -48,20 +63,22 @@ interface AppContextType {
   setCurrentStudentId: (id: string) => void;
 
   currentUser: AuthUser | null;
-  loginWithGoogle: (userData: {
-    name: string;
-    email: string;
-    photoURL?: string;
-    role: UserRole;
-    teacherId?: string;
-    studentId?: string;
-  }) => void;
-  logout: () => void;
+  loginWithGoogle: () => Promise<void>;
+  loginWithEmail: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
+  signUpWithEmail: (email: string, pass: string, fullName: string, role: UserRole) => Promise<{ success: boolean; error?: string }>;
+  logout: () => Promise<void>;
   isAuthModalOpen: boolean;
   setIsAuthModalOpen: (open: boolean) => void;
 
   isDarkMode: boolean;
   toggleDarkMode: () => void;
+
+  // Estado de base de datos en tiempo real
+  isLoadingDb: boolean;
+  dbError: string | null;
+  clearDbError: () => void;
+  refreshFromSupabase: () => Promise<void>;
+  seedInitialDataToSupabase: () => Promise<void>;
 
   teachers: Teacher[];
   activities: Activity[];
@@ -71,31 +88,31 @@ interface AppContextType {
   sessions: ClassSession[];
   payouts: TeacherPayout[];
 
-  // Acciones
-  recordPayment: (payment: Omit<PaymentRecord, 'id' | 'receiptNumber'> & { id?: string }) => PaymentRecord;
-  updatePayment: (id: string, updates: Partial<PaymentRecord>) => void;
-  deletePayment: (id: string) => void;
-  markPaymentPaid: (id: string, method?: PaymentMethod) => void;
+  // Acciones en tiempo real
+  recordPayment: (payment: Omit<PaymentRecord, 'id' | 'receiptNumber'> & { id?: string }) => Promise<PaymentRecord | null>;
+  updatePayment: (id: string, updates: Partial<PaymentRecord>) => Promise<void>;
+  deletePayment: (id: string) => Promise<void>;
+  markPaymentPaid: (id: string, method?: PaymentMethod) => Promise<void>;
 
-  addStudent: (student: Omit<Student, 'id' | 'registeredAt'>) => void;
-  updateStudent: (id: string, updates: Partial<Student>) => void;
-  deleteStudent: (id: string) => void;
-  enrollStudentInActivity: (studentId: string, activityId: string, customPrice?: number) => void;
+  addStudent: (student: Omit<Student, 'id' | 'registeredAt'>) => Promise<void>;
+  updateStudent: (id: string, updates: Partial<Student>) => Promise<void>;
+  deleteStudent: (id: string) => Promise<void>;
+  enrollStudentInActivity: (studentId: string, activityId: string, customPrice?: number) => Promise<void>;
 
-  addTeacher: (teacher: Omit<Teacher, 'id'>) => void;
-  updateTeacher: (id: string, updates: Partial<Teacher>) => void;
-  deleteTeacher: (id: string) => void;
-  updateTeacherAvatar: (teacherId: string, avatarUrl: string) => void;
+  addTeacher: (teacher: Omit<Teacher, 'id'>) => Promise<void>;
+  updateTeacher: (id: string, updates: Partial<Teacher>) => Promise<void>;
+  deleteTeacher: (id: string) => Promise<void>;
+  updateTeacherAvatar: (teacherId: string, avatarUrl: string) => Promise<void>;
 
-  addActivity: (activity: Omit<Activity, 'id'>) => void;
-  updateActivity: (id: string, updates: Partial<Activity>) => void;
-  deleteActivity: (id: string) => void;
+  addActivity: (activity: Omit<Activity, 'id'>) => Promise<void>;
+  updateActivity: (id: string, updates: Partial<Activity>) => Promise<void>;
+  deleteActivity: (id: string) => Promise<void>;
 
-  addExpense: (expense: Omit<CenterExpense, 'id'>) => void;
-  deleteExpense: (id: string) => void;
+  addExpense: (expense: Omit<CenterExpense, 'id'>) => Promise<void>;
+  deleteExpense: (id: string) => Promise<void>;
 
-  addClassSession: (session: Omit<ClassSession, 'id'>) => void;
-  deleteClassSession: (id: string) => void;
+  addClassSession: (session: Omit<ClassSession, 'id'>) => Promise<void>;
+  deleteClassSession: (id: string) => Promise<void>;
   recordClassPayment: (params: {
     studentId: string;
     activityId: string;
@@ -104,7 +121,7 @@ interface AppContextType {
     paymentMethod?: PaymentMethod;
     date?: string;
     notes?: string;
-  }) => PaymentRecord;
+  }) => Promise<PaymentRecord | null>;
 
   settleTeacherPayout: (
     teacherId: string,
@@ -112,9 +129,9 @@ interface AppContextType {
     amountToPay: number,
     method: PaymentMethod,
     notes?: string
-  ) => void;
+  ) => Promise<void>;
 
-  resetToInitialData: () => void;
+  resetToInitialData: () => Promise<void>;
   exportToCSV: (type: 'payments' | 'students' | 'expenses' | 'teachers') => void;
 
   // Cálculos automáticos del período
@@ -129,204 +146,382 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const STORAGE_KEYS = {
-  PERIOD: 'triskell_period',
-  ROLE: 'triskell_role',
-  TEACHER_ID: 'triskell_teacher_id',
-  STUDENT_ID: 'triskell_student_id',
-  DARK_MODE: 'triskell_dark_mode',
-  TEACHERS: 'triskell_teachers',
-  ACTIVITIES: 'triskell_activities',
-  STUDENTS: 'triskell_students',
-  PAYMENTS: 'triskell_payments',
-  EXPENSES: 'triskell_expenses',
-  SESSIONS: 'triskell_sessions',
-  PAYOUTS: 'triskell_payouts',
-  AUTH_USER: 'triskell_auth_user'
-};
-
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.AUTH_USER);
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return null;
-      }
-    }
-    // Cuenta inicial predeterminada de Google para Cristino
-    return {
-      id: 'usr-google-cristino',
-      name: 'Cristino Conde',
-      email: 'cristinoconde@gmail.com',
-      photoURL: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
-      role: 'admin',
-      provider: 'google',
-      lastLogin: new Date().toISOString()
-    };
-  });
-
+  // Estado de usuario y autenticación con Supabase Auth
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
-  const [selectedPeriod, setSelectedPeriod] = useState<string>(() => {
-    return localStorage.getItem(STORAGE_KEYS.PERIOD) || '2026-11';
-  });
+  // Estados de navegación y roles
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('2026-11');
+  const [currentRole, setCurrentRoleState] = useState<UserRole>('admin');
+  const [currentTeacherId, setCurrentTeacherId] = useState<string>('');
+  const [currentStudentId, setCurrentStudentId] = useState<string>('');
 
-  const [currentRole, setCurrentRole] = useState<UserRole>(() => {
-    return (localStorage.getItem(STORAGE_KEYS.ROLE) as UserRole) || 'admin';
-  });
-
-  const [currentTeacherId, setCurrentTeacherId] = useState<string>(() => {
-    return localStorage.getItem(STORAGE_KEYS.TEACHER_ID) || 't-1';
-  });
-
-  const [currentStudentId, setCurrentStudentId] = useState<string>(() => {
-    return localStorage.getItem(STORAGE_KEYS.STUDENT_ID) || 'st-1';
-  });
-
+  // Modo oscuro
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.DARK_MODE);
-    return saved !== null ? saved === 'true' : false;
+    return localStorage.getItem('triskell_theme') === 'dark';
   });
 
-  const [teachers, setTeachers] = useState<Teacher[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.TEACHERS);
-    if (!saved) return INITIAL_TEACHERS;
-    try {
-      const parsed: Teacher[] = JSON.parse(saved);
-      return parsed.map(t => ({
-        ...t,
-        collectionType: t.collectionType || 'personal'
-      }));
-    } catch {
-      return INITIAL_TEACHERS;
+  // Estado de conexión y errores de Supabase
+  const [isLoadingDb, setIsLoadingDb] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
+
+  // Colecciones sincronizadas en tiempo real con Supabase
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [payments, setPayments] = useState<PaymentRecord[]>([]);
+  const [expenses, setExpenses] = useState<CenterExpense[]>([]);
+  const [sessions, setSessions] = useState<ClassSession[]>([]);
+  const [payouts, setPayouts] = useState<TeacherPayout[]>([]);
+
+  const clearDbError = useCallback(() => setDbError(null), []);
+
+  const handleSupabaseError = useCallback((contextMsg: string, error: any) => {
+    console.error(`[Supabase Error] ${contextMsg}:`, error);
+    let msg = error?.message || 'Error de comunicación con Supabase';
+    if (error?.code === '42501' || msg.includes('permission denied') || msg.includes('row-level security')) {
+      msg = `Permiso RLS denegado: Tu usuario actual no tiene permisos suficientes para ${contextMsg.toLowerCase()}. Inicia sesión con la cuenta adecuada.`;
     }
-  });
+    setDbError(msg);
+  }, []);
 
-  const [activities, setActivities] = useState<Activity[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.ACTIVITIES);
-    if (!saved) return INITIAL_ACTIVITIES;
-    try {
-      const parsed: Activity[] = JSON.parse(saved);
-      return parsed.map(a => {
-        const init = INITIAL_ACTIVITIES.find(ia => ia.id === a.id);
-        return {
-          ...a,
-          bizum_enabled: a.bizum_enabled ?? init?.bizum_enabled ?? false,
-          bizum_phone: a.bizum_phone || init?.bizum_phone || '',
-          bizum_concept: a.bizum_concept || init?.bizum_concept || a.name,
-          billingMode: a.billingMode || init?.billingMode || 'monthly'
-        };
-      });
-    } catch {
-      return INITIAL_ACTIVITIES;
-    }
-  });
-
-  const [students, setStudents] = useState<Student[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.STUDENTS);
-    return saved ? JSON.parse(saved) : INITIAL_STUDENTS;
-  });
-
-  const [payments, setPayments] = useState<PaymentRecord[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.PAYMENTS);
-    return saved ? JSON.parse(saved) : INITIAL_PAYMENTS;
-  });
-
-  const [expenses, setExpenses] = useState<CenterExpense[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.EXPENSES);
-    return saved ? JSON.parse(saved) : INITIAL_EXPENSES;
-  });
-
-  const [sessions, setSessions] = useState<ClassSession[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.SESSIONS);
-    return saved ? JSON.parse(saved) : INITIAL_SESSIONS;
-  });
-
-  const [payouts, setPayouts] = useState<TeacherPayout[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.PAYOUTS);
-    return saved ? JSON.parse(saved) : INITIAL_PAYOUTS;
-  });
-
-  // Sincronizar dark mode con class en html tag
+  // Sincronizar dark mode con clase en elemento HTML
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
+      localStorage.setItem('triskell_theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
+      localStorage.setItem('triskell_theme', 'light');
     }
-    localStorage.setItem(STORAGE_KEYS.DARK_MODE, String(isDarkMode));
   }, [isDarkMode]);
 
-  // Persistir estado en localStorage
+  // Carga completa de datos desde Supabase
+  const refreshFromSupabase = useCallback(async () => {
+    try {
+      setIsLoadingDb(true);
+
+      // 1. Cargar Monitores
+      const teachersRes = await supabase.from('teachers').select('*').order('name');
+      if (teachersRes.error) {
+        handleSupabaseError('Cargar monitores', teachersRes.error);
+      } else {
+        const loadedTeachers = (teachersRes.data || []).map(mapDbTeacherToTeacher);
+        setTeachers(loadedTeachers);
+        if (loadedTeachers.length > 0 && !currentTeacherId) {
+          setCurrentTeacherId(loadedTeachers[0].id);
+        }
+      }
+
+      // 2. Cargar Talleres / Actividades
+      const activitiesRes = await supabase.from('activities').select('*').order('name');
+      if (activitiesRes.error) {
+        handleSupabaseError('Cargar talleres', activitiesRes.error);
+      } else {
+        const loadedActivities = (activitiesRes.data || []).map(mapDbActivityToActivity);
+        setActivities(loadedActivities);
+      }
+
+      // 3. Cargar Alumnos y Matrículas
+      const [studentsRes, enrollmentsRes] = await Promise.all([
+        supabase.from('students').select('*').order('name'),
+        supabase.from('student_enrollments').select('*')
+      ]);
+
+      if (studentsRes.error) {
+        handleSupabaseError('Cargar alumnos', studentsRes.error);
+      } else {
+        const enrollments = enrollmentsRes.data || [];
+        const loadedStudents = (studentsRes.data || []).map(row => mapDbStudentToStudent(row, enrollments));
+        setStudents(loadedStudents);
+        if (loadedStudents.length > 0 && !currentStudentId) {
+          setCurrentStudentId(loadedStudents[0].id);
+        }
+      }
+
+      // 4. Cargar Pagos y Recibos
+      const paymentsRes = await supabase
+        .from('payments')
+        .select('*, students(name), activities(name)')
+        .order('created_at', { ascending: false });
+
+      if (paymentsRes.error) {
+        handleSupabaseError('Cargar pagos', paymentsRes.error);
+      } else {
+        const loadedPayments = (paymentsRes.data || []).map(row => mapDbPaymentToPayment(row));
+        setPayments(loadedPayments);
+      }
+
+      // 5. Cargar Gastos del Centro
+      const expensesRes = await supabase
+        .from('center_expenses')
+        .select('*')
+        .order('date', { ascending: false });
+
+      if (expensesRes.error) {
+        handleSupabaseError('Cargar gastos', expensesRes.error);
+      } else {
+        const loadedExpenses = (expensesRes.data || []).map(mapDbExpenseToExpense);
+        setExpenses(loadedExpenses);
+      }
+
+      // 6. Cargar Sesiones y Asistencias
+      const [sessionsRes, attendancesRes] = await Promise.all([
+        supabase.from('class_sessions').select('*').order('date', { ascending: false }),
+        supabase.from('session_attendances').select('*, students(name)')
+      ]);
+
+      if (sessionsRes.error) {
+        handleSupabaseError('Cargar clases impartidas', sessionsRes.error);
+      } else {
+        const attendances = attendancesRes.data || [];
+        const loadedSessions = (sessionsRes.data || []).map(row => mapDbSessionToSession(row, attendances));
+        setSessions(loadedSessions);
+      }
+
+      // 7. Cargar Liquidaciones de Monitores
+      const payoutsRes = await supabase
+        .from('teacher_payouts')
+        .select('*')
+        .order('period_month', { ascending: false });
+
+      if (payoutsRes.error) {
+        handleSupabaseError('Cargar liquidaciones', payoutsRes.error);
+      } else {
+        const loadedPayouts = (payoutsRes.data || []).map(mapDbPayoutToPayout);
+        setPayouts(loadedPayouts);
+      }
+
+    } catch (err: any) {
+      handleSupabaseError('Sincronización general', err);
+    } finally {
+      setIsLoadingDb(false);
+    }
+  }, [handleSupabaseError, currentTeacherId, currentStudentId]);
+
+  // Cargar perfil del usuario desde Supabase auth.users y public.profiles
+  const syncUserProfile = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
+    try {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') {
+        console.warn('Error fetching profile:', error);
+      }
+
+      let role: UserRole = (profile?.role as UserRole) || (userMeta?.role as UserRole) || 'admin';
+      let fullName = profile?.full_name || userMeta?.full_name || userMeta?.name || userEmail?.split('@')[0] || 'Usuario';
+      let avatarUrl = profile?.avatar_url || userMeta?.avatar_url || userMeta?.picture || undefined;
+      let teacherId = profile?.teacher_id || undefined;
+      let studentId = profile?.student_id || undefined;
+
+      // Si no existe perfil en la tabla de profiles, crearlo
+      if (!profile) {
+        const { error: insertErr } = await supabase.from('profiles').upsert({
+          id: userId,
+          email: userEmail || '',
+          full_name: fullName,
+          avatar_url: avatarUrl || null,
+          role: role,
+          teacher_id: teacherId || null,
+          student_id: studentId || null
+        });
+        if (insertErr) {
+          console.warn('Error creating default profile:', insertErr);
+        }
+      }
+
+      const authUserObj: AuthUser = {
+        id: userId,
+        email: userEmail || '',
+        name: fullName,
+        photoURL: avatarUrl,
+        role: role,
+        teacherId: teacherId,
+        studentId: studentId,
+        provider: 'google',
+        lastLogin: new Date().toISOString()
+      };
+
+      setCurrentUser(authUserObj);
+      setCurrentRoleState(role);
+      if (teacherId) setCurrentTeacherId(teacherId);
+      if (studentId) setCurrentStudentId(studentId);
+
+    } catch (e) {
+      console.error('Error synchronizing user profile:', e);
+    }
+  }, []);
+
+  // Suscripción al estado de Auth de Supabase
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.PERIOD, selectedPeriod);
-    localStorage.setItem(STORAGE_KEYS.ROLE, currentRole);
-    localStorage.setItem(STORAGE_KEYS.TEACHER_ID, currentTeacherId);
-    localStorage.setItem(STORAGE_KEYS.TEACHERS, JSON.stringify(teachers));
-    localStorage.setItem(STORAGE_KEYS.ACTIVITIES, JSON.stringify(activities));
-    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
-    localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(payments));
-    localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
-    localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(sessions));
-    localStorage.setItem(STORAGE_KEYS.PAYOUTS, JSON.stringify(payouts));
-    if (currentUser) {
-      localStorage.setItem(STORAGE_KEYS.AUTH_USER, JSON.stringify(currentUser));
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.AUTH_USER);
-    }
-  }, [selectedPeriod, currentRole, currentTeacherId, teachers, activities, students, payments, expenses, sessions, payouts, currentUser]);
+    let mounted = true;
 
-  const loginWithGoogle = (userData: {
-    name: string;
-    email: string;
-    photoURL?: string;
-    role: UserRole;
-    teacherId?: string;
-    studentId?: string;
-  }) => {
-    const newUser: AuthUser = {
-      id: `usr-google-${Date.now()}`,
-      name: userData.name,
-      email: userData.email,
-      photoURL: userData.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
-      role: userData.role,
-      teacherId: userData.teacherId,
-      studentId: userData.studentId,
-      provider: 'google',
-      lastLogin: new Date().toISOString()
+    // Verificar sesión existente
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
+      if (session?.user) {
+        syncUserProfile(session.user.id, session.user.email, session.user.user_metadata);
+      } else {
+        // Usuario demo inicial si no hay sesión activa aún en Supabase
+        setCurrentUser({
+          id: 'demo-admin-cristino',
+          email: 'cristinoconde@gmail.com',
+          name: 'Cristino Conde',
+          photoURL: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
+          role: 'admin',
+          provider: 'google',
+          lastLogin: new Date().toISOString()
+        });
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+      if (session?.user) {
+        await syncUserProfile(session.user.id, session.user.email, session.user.user_metadata);
+      } else {
+        setCurrentUser(null);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
     };
-    setCurrentUser(newUser);
-    setCurrentRole(userData.role);
-    if (userData.teacherId) {
-      setCurrentTeacherId(userData.teacherId);
+  }, [syncUserProfile]);
+
+  // Cargar datos iniciales y configurar canal en tiempo real de Supabase
+  useEffect(() => {
+    refreshFromSupabase();
+
+    // Canal Realtime para escuchar cambios en cualquier tabla de la base de datos
+    const channel = supabase
+      .channel('triskell_db_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+        refreshFromSupabase();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refreshFromSupabase]);
+
+  // Función para cambiar de rol y persistirlo en la tabla profiles de Supabase
+  const setCurrentRole = useCallback(async (newRole: UserRole) => {
+    setCurrentRoleState(newRole);
+    if (currentUser?.id && !currentUser.id.startsWith('demo-')) {
+      try {
+        await supabase
+          .from('profiles')
+          .update({ role: newRole })
+          .eq('id', currentUser.id);
+      } catch (err) {
+        console.warn('Error updating role in Supabase profiles:', err);
+      }
     }
-    if (userData.studentId) {
-      setCurrentStudentId(userData.studentId);
+  }, [currentUser]);
+
+  // Inicio de sesión con Google OAuth mediante Supabase
+  const loginWithGoogle = async () => {
+    clearDbError();
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      if (error) {
+        handleSupabaseError('Inicio de sesión con Google', error);
+      }
+    } catch (e: any) {
+      handleSupabaseError('Inicio de sesión con Google', e);
     }
   };
 
-  const logout = () => {
-    setCurrentUser(null);
+  // Inicio de sesión con Email y Contraseña mediante Supabase
+  const loginWithEmail = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
+    clearDbError();
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password: pass
+      });
+      if (error) {
+        handleSupabaseError('Inicio de sesión con Email', error);
+        return { success: false, error: error.message };
+      }
+      if (data.user) {
+        await syncUserProfile(data.user.id, data.user.email, data.user.user_metadata);
+      }
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Error de autenticación' };
+    }
   };
 
-  const toggleDarkMode = () => setIsDarkMode(prev => !prev);
+  // Registro con Email y Contraseña mediante Supabase
+  const signUpWithEmail = async (
+    email: string,
+    pass: string,
+    fullName: string,
+    role: UserRole
+  ): Promise<{ success: boolean; error?: string }> => {
+    clearDbError();
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password: pass,
+        options: {
+          data: {
+            full_name: fullName,
+            role: role
+          }
+        }
+      });
+      if (error) {
+        handleSupabaseError('Registro con Email', error);
+        return { success: false, error: error.message };
+      }
+      if (data.user) {
+        await syncUserProfile(data.user.id, data.user.email, data.user.user_metadata);
+      }
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Error de registro' };
+    }
+  };
 
-  // Navegación de períodos mensuales
+  // Cierre de sesión en Supabase
+  const logout = async () => {
+    try {
+      await supabase.auth.signOut();
+      setCurrentUser(null);
+    } catch (e) {
+      console.error('Error logging out:', e);
+    }
+  };
+
+  // Navegación de Períodos Mensuales
   const goToPrevPeriod = () => {
     const [year, month] = selectedPeriod.split('-').map(Number);
-    const date = new Date(year, month - 2, 1);
-    const newY = date.getFullYear();
-    const newM = String(date.getMonth() + 1).padStart(2, '0');
+    const prevDate = new Date(year, month - 2, 1);
+    const newY = prevDate.getFullYear();
+    const newM = String(prevDate.getMonth() + 1).padStart(2, '0');
     setSelectedPeriod(`${newY}-${newM}`);
   };
 
   const goToNextPeriod = () => {
     const [year, month] = selectedPeriod.split('-').map(Number);
-    const date = new Date(year, month, 1);
-    const newY = date.getFullYear();
-    const newM = String(date.getMonth() + 1).padStart(2, '0');
+    const nextDate = new Date(year, month, 1);
+    const newY = nextDate.getFullYear();
+    const newM = String(nextDate.getMonth() + 1).padStart(2, '0');
     setSelectedPeriod(`${newY}-${newM}`);
   };
 
@@ -334,217 +529,269 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSelectedPeriod('2026-11');
   };
 
-  // Acciones de pagos
-  const recordPayment = (p: Omit<PaymentRecord, 'id' | 'receiptNumber'> & { id?: string }) => {
-    const newId = p.id || `pay-${Date.now()}`;
-    const receiptNumber = `REC-${selectedPeriod.replace('-', '')}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const newRecord: PaymentRecord = {
-      ...p,
-      id: newId,
-      receiptNumber
-    };
-    setPayments(prev => [newRecord, ...prev]);
-    return newRecord;
-  };
+  // Toggle Dark Mode
+  const toggleDarkMode = () => setIsDarkMode(prev => !prev);
 
-  const updatePayment = (id: string, updates: Partial<PaymentRecord>) => {
-    setPayments(prev => prev.map(p => (p.id === id ? { ...p, ...updates } : p)));
-  };
+  // ==============================================================================
+  // OPERACIONES CRUD EN TIEMPO REAL CON SUPABASE
+  // ==============================================================================
 
-  const deletePayment = (id: string) => {
-    setPayments(prev => prev.filter(p => p.id !== id));
-  };
-
-  const markPaymentPaid = (id: string, method?: PaymentMethod) => {
-    const today = new Date().toISOString().split('T')[0];
-    setPayments(prev =>
-      prev.map(p =>
-        p.id === id
-          ? {
-              ...p,
-              status: 'paid',
-              paymentDate: p.paymentDate || today,
-              paymentMethod: method || p.paymentMethod || 'transfer'
-            }
-          : p
-      )
-    );
-  };
-
-  // Acciones de alumnos
-  const addStudent = (studentData: Omit<Student, 'id' | 'registeredAt'>) => {
-    const newId = `st-${Date.now()}`;
-    const today = new Date().toISOString().split('T')[0];
-    const newStudent: Student = {
-      ...studentData,
-      id: newId,
-      registeredAt: today
-    };
-    setStudents(prev => [newStudent, ...prev]);
-
-    // Generar automáticamente las cuotas iniciales del período actual para este alumno
-    newStudent.activities.forEach(actEnroll => {
-      const act = activities.find(a => a.id === actEnroll.activityId);
-      const amount = actEnroll.customPrice ?? act?.defaultPriceMonthly ?? 45;
-      const receiptNumber = `REC-${selectedPeriod.replace('-', '')}-${Math.floor(1000 + Math.random() * 9000)}`;
-      setPayments(prev => [
-        {
-          id: `pay-${Date.now()}-${actEnroll.activityId}`,
-          receiptNumber,
-          studentId: newStudent.id,
-          studentName: newStudent.name,
-          activityId: actEnroll.activityId,
-          activityName: act?.name || 'Actividad',
-          periodMonth: selectedPeriod,
-          amount,
-          status: 'pending',
-          paymentMethod: 'cash',
-          collectedByTeacher: false
-        },
-        ...prev
-      ]);
-    });
-  };
-
-  const updateStudent = (id: string, updates: Partial<Student>) => {
-    setStudents(prev => prev.map(s => (s.id === id ? { ...s, ...updates } : s)));
-    // Si cambia el nombre, actualizar en los pagos
-    if (updates.name) {
-      setPayments(prev =>
-        prev.map(p => (p.studentId === id ? { ...p, studentName: updates.name! } : p))
-      );
+  // Monitores
+  const addTeacher = async (teacher: Omit<Teacher, 'id'>) => {
+    clearDbError();
+    const dbPayload = mapTeacherToDb(teacher);
+    const { data, error } = await supabase.from('teachers').insert([dbPayload]).select().single();
+    if (error) {
+      handleSupabaseError('Alta de monitor', error);
+      return;
+    }
+    if (data) {
+      const newTeacher = mapDbTeacherToTeacher(data);
+      setTeachers(prev => [...prev, newTeacher]);
     }
   };
 
-  const deleteStudent = (id: string) => {
-    setStudents(prev => prev.filter(s => s.id !== id));
-  };
-
-  const enrollStudentInActivity = (studentId: string, activityId: string, customPrice?: number) => {
-    const act = activities.find(a => a.id === activityId);
-    if (!act) return;
-    const today = new Date().toISOString().split('T')[0];
-
-    setStudents(prev =>
-      prev.map(st => {
-        if (st.id !== studentId) return st;
-        if (st.activities.some(a => a.activityId === activityId)) return st;
-        return {
-          ...st,
-          activities: [
-            ...st.activities,
-            {
-              activityId,
-              customPrice,
-              enrolledSince: today,
-              billingMode: act.billingMode || 'monthly'
-            }
-          ]
-        };
-      })
-    );
-
-    if (act.billingMode === 'monthly') {
-      const student = students.find(s => s.id === studentId);
-      const exists = payments.some(
-        p => p.studentId === studentId && p.activityId === activityId && p.periodMonth === selectedPeriod
-      );
-      if (!exists && student) {
-        const amount = customPrice ?? act.defaultPriceMonthly;
-        const receiptNumber = `REC-${selectedPeriod.replace('-', '')}-${Math.floor(1000 + Math.random() * 9000)}`;
-        setPayments(prev => [
-          {
-            id: `pay-${Date.now()}-${activityId}`,
-            receiptNumber,
-            studentId,
-            studentName: student.name,
-            activityId,
-            activityName: act.name,
-            periodMonth: selectedPeriod,
-            amount,
-            status: 'pending',
-            paymentMethod: 'cash',
-            collectedByTeacher: true,
-            collectedByTeacherId: act.teacherId
-          },
-          ...prev
-        ]);
-      }
+  const updateTeacher = async (id: string, updates: Partial<Teacher>) => {
+    clearDbError();
+    const current = teachers.find(t => t.id === id);
+    if (!current) return;
+    const merged = { ...current, ...updates };
+    const dbPayload = mapTeacherToDb(merged);
+    const { error } = await supabase.from('teachers').update(dbPayload).eq('id', id);
+    if (error) {
+      handleSupabaseError('Actualizar monitor', error);
+      return;
     }
+    setTeachers(prev => prev.map(t => (t.id === id ? merged : t)));
   };
 
-  // Acciones de profesores
-  const addTeacher = (teacherData: Omit<Teacher, 'id'>) => {
-    const newId = `t-${Date.now()}`;
-    setTeachers(prev => [...prev, { ...teacherData, id: newId }]);
-  };
-
-  const updateTeacher = (id: string, updates: Partial<Teacher>) => {
-    setTeachers(prev => prev.map(t => (t.id === id ? { ...t, ...updates } : t)));
-    // Si se actualiza el monitor actual, reflejar también en currentUser
-    if (currentUser && (currentUser.teacherId === id || currentTeacherId === id)) {
-      if (updates.name || updates.avatar) {
-        setCurrentUser(prev =>
-          prev
-            ? {
-                ...prev,
-                name: updates.name || prev.name,
-                photoURL: updates.avatar || prev.photoURL
-              }
-            : null
-        );
-      }
+  const deleteTeacher = async (id: string) => {
+    clearDbError();
+    const { error } = await supabase.from('teachers').delete().eq('id', id);
+    if (error) {
+      handleSupabaseError('Eliminar monitor', error);
+      return;
     }
-  };
-
-  const updateTeacherAvatar = (teacherId: string, avatarUrl: string) => {
-    setTeachers(prev =>
-      prev.map(t => (t.id === teacherId ? { ...t, avatar: avatarUrl } : t))
-    );
-    if (currentUser && (currentUser.teacherId === teacherId || currentTeacherId === teacherId)) {
-      setCurrentUser(prev => (prev ? { ...prev, photoURL: avatarUrl } : null));
-    }
-  };
-
-  const deleteTeacher = (id: string) => {
     setTeachers(prev => prev.filter(t => t.id !== id));
   };
 
-  // Acciones de actividades
-  const addActivity = (actData: Omit<Activity, 'id'>) => {
-    const newId = `act-${Date.now()}`;
-    setActivities(prev => [...prev, { ...actData, id: newId }]);
+  const updateTeacherAvatar = async (teacherId: string, avatarUrl: string) => {
+    await updateTeacher(teacherId, { avatarUrl, avatar: avatarUrl });
   };
 
-  const updateActivity = (id: string, updates: Partial<Activity>) => {
-    setActivities(prev => prev.map(a => (a.id === id ? { ...a, ...updates } : a)));
+  // Talleres / Actividades
+  const addActivity = async (activity: Omit<Activity, 'id'>) => {
+    clearDbError();
+    const dbPayload = mapActivityToDb(activity);
+    const { data, error } = await supabase.from('activities').insert([dbPayload]).select().single();
+    if (error) {
+      handleSupabaseError('Crear taller', error);
+      return;
+    }
+    if (data) {
+      const newAct = mapDbActivityToActivity(data);
+      setActivities(prev => [...prev, newAct]);
+    }
   };
 
-  const deleteActivity = (id: string) => {
+  const updateActivity = async (id: string, updates: Partial<Activity>) => {
+    clearDbError();
+    const current = activities.find(a => a.id === id);
+    if (!current) return;
+    const merged = { ...current, ...updates };
+    const dbPayload = mapActivityToDb(merged);
+    const { error } = await supabase.from('activities').update(dbPayload).eq('id', id);
+    if (error) {
+      handleSupabaseError('Actualizar taller', error);
+      return;
+    }
+    setActivities(prev => prev.map(a => (a.id === id ? merged : a)));
+  };
+
+  const deleteActivity = async (id: string) => {
+    clearDbError();
+    const { error } = await supabase.from('activities').delete().eq('id', id);
+    if (error) {
+      handleSupabaseError('Eliminar taller', error);
+      return;
+    }
     setActivities(prev => prev.filter(a => a.id !== id));
   };
 
-  // Acciones de gastos
-  const addExpense = (expData: Omit<CenterExpense, 'id'>) => {
-    const newId = `exp-${Date.now()}`;
-    setExpenses(prev => [{ ...expData, id: newId }, ...prev]);
+  // Alumnos y Matrículas
+  const addStudent = async (student: Omit<Student, 'id' | 'registeredAt'>) => {
+    clearDbError();
+    const studentDb = {
+      name: student.name,
+      email: student.email || null,
+      phone: student.phone || null,
+      status: student.status,
+      notes: student.notes || null
+    };
+
+    const { data: newStudentRow, error: studentErr } = await supabase
+      .from('students')
+      .insert([studentDb])
+      .select()
+      .single();
+
+    if (studentErr) {
+      handleSupabaseError('Alta de alumno', studentErr);
+      return;
+    }
+
+    if (newStudentRow) {
+      // Inscribir en las actividades seleccionadas
+      if (student.activities && student.activities.length > 0) {
+        const enrollmentsDb = student.activities.map(act => ({
+          student_id: newStudentRow.id,
+          activity_id: act.activityId,
+          custom_price: act.customPrice || null,
+          billing_mode: act.billingMode,
+          enrolled_since: act.enrolledSince || new Date().toISOString().split('T')[0]
+        }));
+        await supabase.from('student_enrollments').insert(enrollmentsDb);
+      }
+      await refreshFromSupabase();
+    }
   };
 
-  const deleteExpense = (id: string) => {
-    setExpenses(prev => prev.filter(e => e.id !== id));
+  const updateStudent = async (id: string, updates: Partial<Student>) => {
+    clearDbError();
+    const studentDb: any = {};
+    if (updates.name !== undefined) studentDb.name = updates.name;
+    if (updates.email !== undefined) studentDb.email = updates.email || null;
+    if (updates.phone !== undefined) studentDb.phone = updates.phone || null;
+    if (updates.status !== undefined) studentDb.status = updates.status;
+    if (updates.notes !== undefined) studentDb.notes = updates.notes || null;
+
+    if (Object.keys(studentDb).length > 0) {
+      const { error } = await supabase.from('students').update(studentDb).eq('id', id);
+      if (error) {
+        handleSupabaseError('Actualizar alumno', error);
+        return;
+      }
+    }
+
+    // Si actualizan matrículas
+    if (updates.activities) {
+      await supabase.from('student_enrollments').delete().eq('student_id', id);
+      if (updates.activities.length > 0) {
+        const enrollmentsDb = updates.activities.map(act => ({
+          student_id: id,
+          activity_id: act.activityId,
+          custom_price: act.customPrice || null,
+          billing_mode: act.billingMode,
+          enrolled_since: act.enrolledSince || new Date().toISOString().split('T')[0]
+        }));
+        await supabase.from('student_enrollments').insert(enrollmentsDb);
+      }
+    }
+    await refreshFromSupabase();
   };
 
-  // Clases impartidas / asistencias
-  const addClassSession = (sesData: Omit<ClassSession, 'id'>) => {
-    const newId = `ses-${Date.now()}`;
-    setSessions(prev => [{ ...sesData, id: newId }, ...prev]);
+  const deleteStudent = async (id: string) => {
+    clearDbError();
+    const { error } = await supabase.from('students').delete().eq('id', id);
+    if (error) {
+      handleSupabaseError('Eliminar alumno', error);
+      return;
+    }
+    setStudents(prev => prev.filter(s => s.id !== id));
   };
 
-  const deleteClassSession = (id: string) => {
-    setSessions(prev => prev.filter(s => s.id !== id));
+  const enrollStudentInActivity = async (studentId: string, activityId: string, customPrice?: number) => {
+    clearDbError();
+    const act = activities.find(a => a.id === activityId);
+    const { error } = await supabase.from('student_enrollments').upsert({
+      student_id: studentId,
+      activity_id: activityId,
+      custom_price: customPrice || null,
+      billing_mode: act?.billingMode || 'monthly',
+      enrolled_since: new Date().toISOString().split('T')[0],
+      active: true
+    });
+
+    if (error) {
+      handleSupabaseError('Inscribir alumno en taller', error);
+      return;
+    }
+    await refreshFromSupabase();
   };
 
-  const recordClassPayment = (params: {
+  // Pagos y Recibos
+  const recordPayment = async (
+    payment: Omit<PaymentRecord, 'id' | 'receiptNumber'> & { id?: string }
+  ): Promise<PaymentRecord | null> => {
+    clearDbError();
+    const receiptNumber = `REC-${selectedPeriod.replace('-', '')}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+    const student = students.find(s => s.id === payment.studentId);
+    const activity = activities.find(a => a.id === payment.activityId);
+
+    const dbPayload = mapPaymentToDb({
+      id: payment.id || '',
+      receiptNumber,
+      studentId: payment.studentId,
+      studentName: student?.name || '',
+      activityId: payment.activityId,
+      activityName: activity?.name || '',
+      periodMonth: payment.periodMonth || selectedPeriod,
+      amount: payment.amount,
+      paymentDate: payment.paymentDate || (payment.status === 'paid' ? new Date().toISOString().split('T')[0] : undefined),
+      paymentMethod: payment.paymentMethod || 'cash',
+      status: payment.status || 'paid',
+      collectedByTeacher: payment.collectedByTeacher ?? true,
+      collectedByTeacherId: payment.collectedByTeacherId || activity?.teacherId,
+      notes: payment.notes || ''
+    });
+
+    const { data, error } = await supabase.from('payments').insert([dbPayload]).select().single();
+    if (error) {
+      handleSupabaseError('Registrar pago en Supabase', error);
+      return null;
+    }
+
+    if (data) {
+      const createdPayment = mapDbPaymentToPayment(data, student?.name, activity?.name);
+      setPayments(prev => [createdPayment, ...prev]);
+      return createdPayment;
+    }
+    return null;
+  };
+
+  const updatePayment = async (id: string, updates: Partial<PaymentRecord>) => {
+    clearDbError();
+    const current = payments.find(p => p.id === id);
+    if (!current) return;
+    const merged = { ...current, ...updates };
+    const dbPayload = mapPaymentToDb(merged);
+    const { error } = await supabase.from('payments').update(dbPayload).eq('id', id);
+    if (error) {
+      handleSupabaseError('Actualizar pago', error);
+      return;
+    }
+    setPayments(prev => prev.map(p => (p.id === id ? merged : p)));
+  };
+
+  const deletePayment = async (id: string) => {
+    clearDbError();
+    const { error } = await supabase.from('payments').delete().eq('id', id);
+    if (error) {
+      handleSupabaseError('Eliminar pago', error);
+      return;
+    }
+    setPayments(prev => prev.filter(p => p.id !== id));
+  };
+
+  const markPaymentPaid = async (id: string, method?: PaymentMethod) => {
+    await updatePayment(id, {
+      status: 'paid',
+      paymentDate: new Date().toISOString().split('T')[0],
+      ...(method ? { paymentMethod: method } : {})
+    });
+  };
+
+  const recordClassPayment = async (params: {
     studentId: string;
     activityId: string;
     amount: number;
@@ -552,173 +799,292 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     paymentMethod?: PaymentMethod;
     date?: string;
     notes?: string;
-  }) => {
+  }): Promise<PaymentRecord | null> => {
+    clearDbError();
+    const activity = activities.find(a => a.id === params.activityId);
     const student = students.find(s => s.id === params.studentId);
-    const act = activities.find(a => a.id === params.activityId);
-    const today = params.date || new Date().toISOString().split('T')[0];
-    const teacherId = act?.teacherId || currentTeacherId;
-    const method = params.paymentMethod || (act?.bizum_enabled ? 'bizum' : 'cash');
+    const paymentDate = params.date || new Date().toISOString().split('T')[0];
 
-    // Comprobar si ya existe un pago pendiente de este alumno para la actividad en el mes
-    const existingPending = payments.find(
-      p => p.studentId === params.studentId && p.activityId === params.activityId && p.periodMonth === selectedPeriod && p.status !== 'paid'
-    );
+    const receipt = await recordPayment({
+      studentId: params.studentId,
+      studentName: student?.name || 'Alumno',
+      activityId: params.activityId,
+      activityName: activity?.name || 'Taller',
+      periodMonth: selectedPeriod,
+      amount: params.amount,
+      paymentDate: paymentDate,
+      paymentMethod: params.paymentMethod || 'cash',
+      status: 'paid',
+      collectedByTeacher: true,
+      collectedByTeacherId: activity?.teacherId || currentTeacherId,
+      notes: params.notes || (params.isPartial ? 'Pago parcial en clase' : 'Pago de clase impartida')
+    });
 
-    if (existingPending) {
-      const updatedNotes = params.isPartial
-        ? `Pago parcial en clase (${params.amount}€). ${params.notes || ''}`.trim()
-        : (params.notes || existingPending.notes || 'Cobrado en clase por monitor');
+    return receipt;
+  };
 
-      const updatedRecord: PaymentRecord = {
-        ...existingPending,
-        amount: params.amount,
-        status: 'paid',
-        paymentDate: today,
-        paymentMethod: method,
-        collectedByTeacher: true,
-        collectedByTeacherId: teacherId,
-        notes: updatedNotes
-      };
+  // Clases Impartidas y Asistencias
+  const addClassSession = async (session: Omit<ClassSession, 'id'>) => {
+    clearDbError();
+    const sessionDb = {
+      activity_id: session.activityId,
+      teacher_id: session.teacherId,
+      date: session.date,
+      attendees_count: session.attendeesCount,
+      duration_minutes: session.durationMinutes,
+      topic: session.topic || null
+    };
 
-      setPayments(prev => prev.map(p => (p.id === existingPending.id ? updatedRecord : p)));
-      return updatedRecord;
-    } else {
-      const receiptNumber = `REC-${selectedPeriod.replace('-', '')}-${Math.floor(1000 + Math.random() * 9000)}`;
-      const newRecord: PaymentRecord = {
-        id: `pay-${Date.now()}`,
-        receiptNumber,
-        studentId: params.studentId,
-        studentName: student?.name || 'Alumno',
-        activityId: params.activityId,
-        activityName: act?.name || 'Clase',
-        periodMonth: selectedPeriod,
-        amount: params.amount,
-        status: 'paid',
-        paymentDate: today,
-        paymentMethod: method,
-        collectedByTeacher: true,
-        collectedByTeacherId: teacherId,
-        notes: params.isPartial
-          ? `Cobro parcial en clase (${params.amount}€). ${params.notes || ''}`.trim()
-          : (params.notes || 'Cobrado en clase por monitor')
-      };
+    const { data: newSessionRow, error: sessionErr } = await supabase
+      .from('class_sessions')
+      .insert([sessionDb])
+      .select()
+      .single();
 
-      setPayments(prev => [newRecord, ...prev]);
-      return newRecord;
+    if (sessionErr) {
+      handleSupabaseError('Anotar clase impartida', sessionErr);
+      return;
+    }
+
+    if (newSessionRow && session.attendanceRecords && session.attendanceRecords.length > 0) {
+      const attendanceDb = session.attendanceRecords.map(rec => ({
+        session_id: newSessionRow.id,
+        student_id: rec.studentId,
+        attendance: rec.attendance,
+        paid: rec.paid,
+        paid_amount: rec.paidAmount || 0,
+        payment_method: rec.paymentMethod || 'cash',
+        payment_id: rec.paymentId || null
+      }));
+      await supabase.from('session_attendances').insert(attendanceDb);
+    }
+
+    await refreshFromSupabase();
+  };
+
+  const deleteClassSession = async (id: string) => {
+    clearDbError();
+    const { error } = await supabase.from('class_sessions').delete().eq('id', id);
+    if (error) {
+      handleSupabaseError('Eliminar sesión de clase', error);
+      return;
+    }
+    setSessions(prev => prev.filter(s => s.id !== id));
+  };
+
+  // Gastos
+  const addExpense = async (expense: Omit<CenterExpense, 'id'>) => {
+    clearDbError();
+    const dbPayload = mapExpenseToDb(expense);
+    const { data, error } = await supabase.from('center_expenses').insert([dbPayload]).select().single();
+    if (error) {
+      handleSupabaseError('Registrar gasto', error);
+      return;
+    }
+    if (data) {
+      setExpenses(prev => [mapDbExpenseToExpense(data), ...prev]);
     }
   };
 
-  // Liquidación formal de honorarios a profesor
-  const settleTeacherPayout = (
+  const deleteExpense = async (id: string) => {
+    clearDbError();
+    const { error } = await supabase.from('center_expenses').delete().eq('id', id);
+    if (error) {
+      handleSupabaseError('Eliminar gasto', error);
+      return;
+    }
+    setExpenses(prev => prev.filter(e => e.id !== id));
+  };
+
+  // Liquidaciones
+  const settleTeacherPayout = async (
     teacherId: string,
     periodMonth: string,
     amountToPay: number,
     method: PaymentMethod,
     notes?: string
   ) => {
-    const today = new Date().toISOString().split('T')[0];
-    const newPayout: TeacherPayout = {
-      id: `payout-${Date.now()}`,
+    clearDbError();
+    const summary = teacherSummaries.find(s => s.teacher.id === teacherId);
+    const dbPayload = mapPayoutToDb({
+      id: '',
       teacherId,
       periodMonth,
-      calculatedAmount: amountToPay,
-      classesCount: sessions.filter(s => s.teacherId === teacherId && s.date.startsWith(periodMonth)).length,
-      studentsCount: students.filter(st =>
-        st.activities.some(act => activities.find(a => a.id === act.activityId)?.teacherId === teacherId)
-      ).length,
-      collectedInHandByTeacher: 0,
+      calculatedAmount: summary?.calculatedDue || amountToPay,
+      classesCount: summary?.classesCount || 0,
+      studentsCount: summary?.studentsCount || 0,
+      collectedInHandByTeacher: summary?.collectedInHand || 0,
       balancePending: 0,
       totalSettled: amountToPay,
       status: 'settled',
-      settledDate: today,
+      settledDate: new Date().toISOString().split('T')[0],
       paymentMethod: method,
-      notes: notes || 'Liquidación mensual completada'
-    };
-    setPayouts(prev => [newPayout, ...prev]);
+      notes: notes || 'Liquidación mensual formalizada'
+    });
+
+    const { error } = await supabase.from('teacher_payouts').insert([dbPayload]);
+    if (error) {
+      handleSupabaseError('Registrar liquidación', error);
+      return;
+    }
+    await refreshFromSupabase();
   };
 
-  // Restablecer datos
-  const resetToInitialData = () => {
-    localStorage.clear();
-    setSelectedPeriod('2026-11');
-    setCurrentRole('admin');
-    setCurrentTeacherId('t-1');
-    setIsDarkMode(false);
-    setTeachers(INITIAL_TEACHERS);
-    setActivities(INITIAL_ACTIVITIES);
-    setStudents(INITIAL_STUDENTS);
-    setPayments(INITIAL_PAYMENTS);
-    setExpenses(INITIAL_EXPENSES);
-    setSessions(INITIAL_SESSIONS);
-    setPayouts(INITIAL_PAYOUTS);
+  // Sembrador / Inicializador de datos en Supabase si la base de datos está vacía
+  const seedInitialDataToSupabase = async () => {
+    clearDbError();
+    setIsLoadingDb(true);
+    try {
+      // 1. Insertar Monitores
+      const teachersPayload = INITIAL_TEACHERS.map(t => ({
+        name: t.name,
+        email: t.email,
+        phone: t.phone,
+        avatar_url: t.avatarUrl || t.avatar,
+        payment_scheme: t.paymentScheme,
+        rate_per_class: t.ratePerClass,
+        fixed_monthly_rate: t.fixedMonthlyRate,
+        revenue_share_percent: t.revenueSharePercent,
+        preferred_payment_method: t.preferredPaymentMethod,
+        collection_type: t.collectionType || 'personal',
+        bank_account: t.bankAccount,
+        active: t.active,
+        notes: t.notes
+      }));
+      const { data: createdTeachers, error: tErr } = await supabase.from('teachers').insert(teachersPayload).select();
+      if (tErr) throw tErr;
+
+      const tMap: Record<string, string> = {};
+      createdTeachers?.forEach((ct, idx) => {
+        tMap[INITIAL_TEACHERS[idx].id] = ct.id;
+      });
+
+      // 2. Insertar Talleres
+      const activitiesPayload = INITIAL_ACTIVITIES.map(a => ({
+        name: a.name,
+        description: a.description,
+        teacher_id: tMap[a.teacherId] || createdTeachers?.[0]?.id,
+        category: a.category,
+        color: a.color,
+        schedule: a.schedule,
+        default_price_monthly: a.defaultPriceMonthly,
+        default_price_per_class: a.defaultPricePerClass,
+        billing_mode: a.billingMode,
+        bizum_enabled: a.bizum_enabled,
+        bizum_phone: a.bizum_phone,
+        bizum_concept: a.bizum_concept,
+        room: a.room,
+        active: a.active
+      }));
+      const { data: createdActivities, error: aErr } = await supabase.from('activities').insert(activitiesPayload).select();
+      if (aErr) throw aErr;
+
+      const aMap: Record<string, string> = {};
+      createdActivities?.forEach((ca, idx) => {
+        aMap[INITIAL_ACTIVITIES[idx].id] = ca.id;
+      });
+
+      // 3. Insertar Alumnos
+      const studentsPayload = INITIAL_STUDENTS.map(s => ({
+        name: s.name,
+        email: s.email,
+        phone: s.phone,
+        status: s.status,
+        registered_at: s.registeredAt,
+        notes: s.notes
+      }));
+      const { data: createdStudents, error: sErr } = await supabase.from('students').insert(studentsPayload).select();
+      if (sErr) throw sErr;
+
+      // 4. Insertar Matrículas
+      const enrollmentsPayload: any[] = [];
+      INITIAL_STUDENTS.forEach((origS, sIdx) => {
+        const newStudentId = createdStudents?.[sIdx]?.id;
+        if (newStudentId && origS.activities) {
+          origS.activities.forEach(enr => {
+            const newActId = aMap[enr.activityId];
+            if (newActId) {
+              enrollmentsPayload.push({
+                student_id: newStudentId,
+                activity_id: newActId,
+                custom_price: enr.customPrice || null,
+                billing_mode: enr.billingMode || 'monthly',
+                enrolled_since: enr.enrolledSince
+              });
+            }
+          });
+        }
+      });
+      if (enrollmentsPayload.length > 0) {
+        await supabase.from('student_enrollments').insert(enrollmentsPayload);
+      }
+
+      // 5. Insertar Gastos
+      const expensesPayload = INITIAL_EXPENSES.map(e => ({
+        title: e.title,
+        category: e.category,
+        amount: e.amount,
+        date: e.date,
+        period_month: e.periodMonth,
+        payment_method: e.paymentMethod,
+        status: e.status,
+        invoice_number: e.invoiceNumber,
+        notes: e.notes
+      }));
+      await supabase.from('center_expenses').insert(expensesPayload);
+
+      await refreshFromSupabase();
+    } catch (err: any) {
+      handleSupabaseError('Poblar datos iniciales en Supabase', err);
+    } finally {
+      setIsLoadingDb(false);
+    }
   };
 
-  // Exportar datos a CSV
+  const resetToInitialData = async () => {
+    await seedInitialDataToSupabase();
+  };
+
+  // Exportar a CSV
   const exportToCSV = (type: 'payments' | 'students' | 'expenses' | 'teachers') => {
-    let headers: string[] = [];
-    let rows: (string | number)[][] = [];
+    let csvContent = 'data:text/csv;charset=utf-8,';
     let filename = `triskell_${type}_${selectedPeriod}.csv`;
 
     if (type === 'payments') {
-      headers = ['Recibo', 'Periodo', 'Alumno', 'Actividad', 'Importe (€)', 'Estado', 'Fecha Pago', 'Metodo', 'Cobrado por Monitor'];
-      rows = periodPayments.map(p => [
-        p.receiptNumber,
-        p.periodMonth,
-        `"${p.studentName}"`,
-        `"${p.activityName}"`,
-        p.amount,
-        p.status,
-        p.paymentDate || '',
-        p.paymentMethod,
-        p.collectedByTeacher ? 'SI' : 'NO'
-      ]);
+      csvContent += 'Recibo,Alumno,Actividad,Mes,Importe,Estado,FechaPago,Metodo,CobradoEnMano\n';
+      periodPayments.forEach(p => {
+        csvContent += `"${p.receiptNumber}","${p.studentName}","${p.activityName}","${p.periodMonth}",${p.amount},"${p.status}","${p.paymentDate || ''}","${p.paymentMethod}","${p.collectedByTeacher ? 'Sí' : 'No'}"\n`;
+      });
     } else if (type === 'students') {
-      headers = ['ID', 'Nombre', 'Email', 'Telefono', 'Estado', 'Fecha Alta', 'Total Actividades'];
-      rows = students.map(s => [
-        s.id,
-        `"${s.name}"`,
-        s.email,
-        s.phone,
-        s.status,
-        s.registeredAt,
-        s.activities.length
-      ]);
+      csvContent += 'Nombre,Email,Telefono,Estado,FechaAlta\n';
+      students.forEach(s => {
+        csvContent += `"${s.name}","${s.email}","${s.phone}","${s.status}","${s.registeredAt}"\n`;
+      });
     } else if (type === 'expenses') {
-      headers = ['ID', 'Concepto', 'Categoria', 'Periodo', 'Importe (€)', 'Fecha', 'Metodo', 'Factura'];
-      rows = expenses.filter(e => e.periodMonth === selectedPeriod).map(e => [
-        e.id,
-        `"${e.title}"`,
-        e.category,
-        e.periodMonth,
-        e.amount,
-        e.date,
-        e.paymentMethod,
-        e.invoiceNumber || ''
-      ]);
+      csvContent += 'Concepto,Categoria,Importe,Fecha,Mes,Metodo,Factura\n';
+      expenses.filter(e => e.periodMonth === selectedPeriod).forEach(e => {
+        csvContent += `"${e.title}","${e.category}",${e.amount},"${e.date}","${e.periodMonth}","${e.paymentMethod}","${e.invoiceNumber || ''}"\n`;
+      });
     } else if (type === 'teachers') {
-      headers = ['Profesor', 'Email', 'Esquema de Pago', 'Tarifa Clase (€)', 'Fijo Mensual (€)', '% Reparto', 'Metodo'];
-      rows = teachers.map(t => [
-        `"${t.name}"`,
-        t.email,
-        t.paymentScheme,
-        t.ratePerClass,
-        t.fixedMonthlyRate,
-        t.revenueSharePercent,
-        t.preferredPaymentMethod
-      ]);
+      csvContent += 'Nombre,Email,Telefono,Modalidad,TarifaClase,FijoMensual,PorcentajeCuotas\n';
+      teachers.forEach(t => {
+        csvContent += `"${t.name}","${t.email}","${t.phone}","${t.paymentScheme}",${t.ratePerClass},${t.fixedMonthlyRate},${t.revenueSharePercent}\n`;
+      });
     }
 
-    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
+    const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
     link.click();
-    URL.revokeObjectURL(url);
+    document.body.removeChild(link);
   };
 
-  // CÁLCULOS PERÍODO
+  // ==============================================================================
+  // CÁLCULOS DINÁMICOS DEL PERÍODO MENSUAL
+  // ==============================================================================
+
   const periodPayments = useMemo(() => {
     return payments.filter(p => p.periodMonth === selectedPeriod);
   }, [payments, selectedPeriod]);
@@ -726,69 +1092,70 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const totalIncomeCollected = useMemo(() => {
     return periodPayments
       .filter(p => p.status === 'paid')
-      .reduce((acc, p) => acc + p.amount, 0);
+      .reduce((sum, p) => sum + p.amount, 0);
   }, [periodPayments]);
 
   const totalIncomePending = useMemo(() => {
     return periodPayments
       .filter(p => p.status === 'pending' || p.status === 'overdue')
-      .reduce((acc, p) => acc + p.amount, 0);
+      .reduce((sum, p) => sum + p.amount, 0);
   }, [periodPayments]);
 
   const totalExpenses = useMemo(() => {
     return expenses
-      .filter(e => e.periodMonth === selectedPeriod)
-      .reduce((acc, e) => acc + e.amount, 0);
+      .filter(e => e.periodMonth === selectedPeriod && e.status === 'paid')
+      .reduce((sum, e) => sum + e.amount, 0);
   }, [expenses, selectedPeriod]);
 
-  // Desglose financiero por profesor para el período seleccionado
-  const teacherSummaries: TeacherFinancialSummary[] = useMemo(() => {
+  const teacherSummaries = useMemo<TeacherFinancialSummary[]>(() => {
     return teachers.map(teacher => {
-      // Actividades que imparte
-      const teacherActs = activities.filter(a => a.teacherId === teacher.id);
-      const actIds = teacherActs.map(a => a.id);
+      const teacherActivities = activities.filter(a => a.teacherId === teacher.id);
+      const activityIds = teacherActivities.map(a => a.id);
 
-      // Alumnos inscritos en sus actividades
-      const studentsCount = students.filter(st =>
-        st.activities.some(act => actIds.includes(act.activityId))
-      ).length;
-
-      // Clases dadas en este período
       const teacherSessions = sessions.filter(
         s => s.teacherId === teacher.id && s.date.startsWith(selectedPeriod)
       );
       const classesCount = teacherSessions.length;
 
-      // Recaudación bruta generada por sus actividades este mes
-      const activityPayments = periodPayments.filter(p => actIds.includes(p.activityId));
-      const grossActivityRevenue = activityPayments.reduce((acc, p) => acc + p.amount, 0);
+      const enrolledStudentIds = new Set<string>();
+      students.forEach(s => {
+        if (s.activities.some(act => activityIds.includes(act.activityId))) {
+          enrolledStudentIds.add(s.id);
+        }
+      });
+      const studentsCount = enrolledStudentIds.size;
 
-      // Cuánto le corresponde cobrar según su modelo contractual
+      const teacherPeriodPayments = periodPayments.filter(p => activityIds.includes(p.activityId));
+      const grossActivityRevenue = teacherPeriodPayments
+        .filter(p => p.status === 'paid')
+        .reduce((sum, p) => sum + p.amount, 0);
+
       let calculatedDue = 0;
-      if (teacher.paymentScheme === 'per_class') {
-        calculatedDue = classesCount * (teacher.ratePerClass || 0);
-      } else if (teacher.paymentScheme === 'monthly_fixed') {
-        calculatedDue = teacher.fixedMonthlyRate || 0;
-      } else if (teacher.paymentScheme === 'revenue_share') {
-        calculatedDue = (grossActivityRevenue * (teacher.revenueSharePercent || 0)) / 100;
+      switch (teacher.paymentScheme) {
+        case 'per_class':
+          calculatedDue = classesCount * teacher.ratePerClass;
+          break;
+        case 'monthly_fixed':
+          calculatedDue = teacher.fixedMonthlyRate;
+          break;
+        case 'revenue_share':
+          calculatedDue = grossActivityRevenue * (teacher.revenueSharePercent / 100);
+          break;
       }
 
-      // Cuánto ha cobrado ya el profesor directamente en mano a los alumnos
-      const collectedInHand = activityPayments
-        .filter(p => p.collectedByTeacher && (p.collectedByTeacherId === teacher.id || !p.collectedByTeacherId) && p.status === 'paid')
-        .reduce((acc, p) => acc + p.amount, 0);
+      const collectedInHand = teacherPeriodPayments
+        .filter(p => p.status === 'paid' && p.collectedByTeacher)
+        .reduce((sum, p) => sum + p.amount, 0);
 
-      // Cuánto se le ha transferido/liquidado ya formalmente desde el centro
-      const settledRecords = payouts.filter(
-        pay => pay.teacherId === teacher.id && pay.periodMonth === selectedPeriod && pay.status === 'settled'
+      const teacherPeriodPayouts = payouts.filter(
+        p => p.teacherId === teacher.id && p.periodMonth === selectedPeriod && p.status === 'settled'
       );
-      const alreadySettled = settledRecords.reduce((acc, pay) => acc + pay.totalSettled, 0);
+      const alreadySettled = teacherPeriodPayouts.reduce((sum, p) => sum + p.totalSettled, 0);
 
-      // Balance pendiente a transferirle
       const balanceToPay = Math.max(0, calculatedDue - collectedInHand - alreadySettled);
 
       let status: 'settled' | 'pending' | 'surplus' = 'pending';
-      if (collectedInHand + alreadySettled >= calculatedDue && calculatedDue > 0) {
+      if (balanceToPay === 0) {
         status = 'settled';
       } else if (collectedInHand > calculatedDue) {
         status = 'surplus';
@@ -832,11 +1199,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCurrentStudentId,
         currentUser,
         loginWithGoogle,
+        loginWithEmail,
+        signUpWithEmail,
         logout,
         isAuthModalOpen,
         setIsAuthModalOpen,
         isDarkMode,
         toggleDarkMode,
+        isLoadingDb,
+        dbError,
+        clearDbError,
+        refreshFromSupabase,
+        seedInitialDataToSupabase,
         teachers,
         activities,
         students,
