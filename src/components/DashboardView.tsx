@@ -1,6 +1,5 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
-import { AppReviewBanner } from './AppReviewBanner';
 import { PaymentRecord } from '../types';
 import {
   TrendingUp,
@@ -68,9 +67,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Banner con el análisis técnico y opinión de la app Bolt */}
-      <AppReviewBanner />
-
       {/* KPI Cards de Finanzas Mensuales */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* Recaudado Alumnos */}
