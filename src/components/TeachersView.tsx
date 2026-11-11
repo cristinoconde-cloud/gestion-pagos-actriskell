@@ -46,7 +46,7 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
         <div>
           <h2 className="text-base font-bold text-slate-900 dark:text-white">
-            Profesores & Liquidación de Honorarios ({selectedPeriod})
+            Monitores & Liquidación de Honorarios ({selectedPeriod})
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Cálculo de honorarios por clase, nómina fija o porcentaje de cuotas
@@ -66,7 +66,7 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
             className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs"
           >
             <Plus className="h-4 w-4" />
-            <span>Alta de Profesor</span>
+            <span>Alta de Monitor</span>
           </button>
         </div>
       </div>

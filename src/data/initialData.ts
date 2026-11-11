@@ -12,6 +12,7 @@ export const INITIAL_TEACHERS: Teacher[] = [
     fixedMonthlyRate: 0,
     revenueSharePercent: 0,
     preferredPaymentMethod: 'transfer',
+    collectionType: 'personal', // Por defecto: cobro directo alumno -> monitor
     bankAccount: 'ES45 2100 0418 4502 0005 1234',
     active: true,
     notes: 'Instructora certificada en Yoga Vinyasa y Hatha. Imparte martes y jueves.'
@@ -27,9 +28,10 @@ export const INITIAL_TEACHERS: Teacher[] = [
     fixedMonthlyRate: 0,
     revenueSharePercent: 65, // 65% de las cuotas de sus alumnos
     preferredPaymentMethod: 'cash',
+    collectionType: 'personal', // Por defecto: cobro directo alumno -> monitor
     bankAccount: '',
     active: true,
-    notes: 'Profesor de Guitarra acústica y clásica. Cobro habitualmente en mano.'
+    notes: 'Monitor de Guitarra acústica y clásica. Cobro habitualmente en mano.'
   },
   {
     id: 't-3',
@@ -42,6 +44,7 @@ export const INITIAL_TEACHERS: Teacher[] = [
     fixedMonthlyRate: 550, // 550€ fijas al mes
     revenueSharePercent: 0,
     preferredPaymentMethod: 'transfer',
+    collectionType: 'personal', // Por defecto: cobro directo alumno -> monitor
     bankAccount: 'ES89 0049 1500 0512 3456 7890',
     active: true,
     notes: 'Fisioterapeuta y monitora de Pilates Suelo y Espalda Sana.'
@@ -57,9 +60,10 @@ export const INITIAL_TEACHERS: Teacher[] = [
     fixedMonthlyRate: 0,
     revenueSharePercent: 0,
     preferredPaymentMethod: 'bizum',
+    collectionType: 'personal', // Por defecto: cobro directo alumno -> monitor
     bankAccount: '',
     active: true,
-    notes: 'Profesor nativo de Francés B1-B2 e Iniciación.'
+    notes: 'Monitor nativo de Francés B1-B2 e Iniciación.'
   }
 ];
 
@@ -75,6 +79,9 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     defaultPriceMonthly: 50,
     defaultPricePerClass: 10,
     billingMode: 'monthly',
+    bizum_enabled: true,
+    bizum_phone: '+34 612 345 678',
+    bizum_concept: 'Yoga Vinyasa',
     room: 'Sala Principal Zen',
     active: true
   },
@@ -89,6 +96,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     defaultPriceMonthly: 45,
     defaultPricePerClass: 9,
     billingMode: 'monthly',
+    bizum_enabled: false,
     room: 'Sala Tatami',
     active: true
   },
@@ -102,7 +110,10 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     schedule: ['Viernes 17:00 - 19:00'],
     defaultPriceMonthly: 60,
     defaultPricePerClass: 15,
-    billingMode: 'monthly',
+    billingMode: 'per_class', // Modalidad de cobro por clase
+    bizum_enabled: true,
+    bizum_phone: '+34 620 987 654',
+    bizum_concept: 'Clase Guitarra',
     room: 'Sala Acústica 2',
     active: true
   },
@@ -117,6 +128,9 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     defaultPriceMonthly: 40,
     defaultPricePerClass: 12,
     billingMode: 'monthly',
+    bizum_enabled: true,
+    bizum_phone: '+34 689 112 233',
+    bizum_concept: 'Frances B1',
     room: 'Aula Biblioteca',
     active: true
   }

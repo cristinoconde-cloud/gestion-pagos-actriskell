@@ -80,10 +80,12 @@ interface AppContextType {
   addStudent: (student: Omit<Student, 'id' | 'registeredAt'>) => void;
   updateStudent: (id: string, updates: Partial<Student>) => void;
   deleteStudent: (id: string) => void;
+  enrollStudentInActivity: (studentId: string, activityId: string, customPrice?: number) => void;
 
   addTeacher: (teacher: Omit<Teacher, 'id'>) => void;
   updateTeacher: (id: string, updates: Partial<Teacher>) => void;
   deleteTeacher: (id: string) => void;
+  updateTeacherAvatar: (teacherId: string, avatarUrl: string) => void;
 
   addActivity: (activity: Omit<Activity, 'id'>) => void;
   updateActivity: (id: string, updates: Partial<Activity>) => void;
@@ -94,6 +96,15 @@ interface AppContextType {
 
   addClassSession: (session: Omit<ClassSession, 'id'>) => void;
   deleteClassSession: (id: string) => void;
+  recordClassPayment: (params: {
+    studentId: string;
+    activityId: string;
+    amount: number;
+    isPartial?: boolean;
+    paymentMethod?: PaymentMethod;
+    date?: string;
+    notes?: string;
+  }) => PaymentRecord;
 
   settleTeacherPayout: (
     teacherId: string,
@@ -181,12 +192,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [teachers, setTeachers] = useState<Teacher[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.TEACHERS);
-    return saved ? JSON.parse(saved) : INITIAL_TEACHERS;
+    if (!saved) return INITIAL_TEACHERS;
+    try {
+      const parsed: Teacher[] = JSON.parse(saved);
+      return parsed.map(t => ({
+        ...t,
+        collectionType: t.collectionType || 'personal'
+      }));
+    } catch {
+      return INITIAL_TEACHERS;
+    }
   });
 
   const [activities, setActivities] = useState<Activity[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.ACTIVITIES);
-    return saved ? JSON.parse(saved) : INITIAL_ACTIVITIES;
+    if (!saved) return INITIAL_ACTIVITIES;
+    try {
+      const parsed: Activity[] = JSON.parse(saved);
+      return parsed.map(a => {
+        const init = INITIAL_ACTIVITIES.find(ia => ia.id === a.id);
+        return {
+          ...a,
+          bizum_enabled: a.bizum_enabled ?? init?.bizum_enabled ?? false,
+          bizum_phone: a.bizum_phone || init?.bizum_phone || '',
+          bizum_concept: a.bizum_concept || init?.bizum_concept || a.name,
+          billingMode: a.billingMode || init?.billingMode || 'monthly'
+        };
+      });
+    } catch {
+      return INITIAL_ACTIVITIES;
+    }
   });
 
   const [students, setStudents] = useState<Student[]>(() => {
@@ -385,6 +420,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setStudents(prev => prev.filter(s => s.id !== id));
   };
 
+  const enrollStudentInActivity = (studentId: string, activityId: string, customPrice?: number) => {
+    const act = activities.find(a => a.id === activityId);
+    if (!act) return;
+    const today = new Date().toISOString().split('T')[0];
+
+    setStudents(prev =>
+      prev.map(st => {
+        if (st.id !== studentId) return st;
+        if (st.activities.some(a => a.activityId === activityId)) return st;
+        return {
+          ...st,
+          activities: [
+            ...st.activities,
+            {
+              activityId,
+              customPrice,
+              enrolledSince: today,
+              billingMode: act.billingMode || 'monthly'
+            }
+          ]
+        };
+      })
+    );
+
+    if (act.billingMode === 'monthly') {
+      const student = students.find(s => s.id === studentId);
+      const exists = payments.some(
+        p => p.studentId === studentId && p.activityId === activityId && p.periodMonth === selectedPeriod
+      );
+      if (!exists && student) {
+        const amount = customPrice ?? act.defaultPriceMonthly;
+        const receiptNumber = `REC-${selectedPeriod.replace('-', '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+        setPayments(prev => [
+          {
+            id: `pay-${Date.now()}-${activityId}`,
+            receiptNumber,
+            studentId,
+            studentName: student.name,
+            activityId,
+            activityName: act.name,
+            periodMonth: selectedPeriod,
+            amount,
+            status: 'pending',
+            paymentMethod: 'cash',
+            collectedByTeacher: true,
+            collectedByTeacherId: act.teacherId
+          },
+          ...prev
+        ]);
+      }
+    }
+  };
+
   // Acciones de profesores
   const addTeacher = (teacherData: Omit<Teacher, 'id'>) => {
     const newId = `t-${Date.now()}`;
@@ -393,6 +481,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateTeacher = (id: string, updates: Partial<Teacher>) => {
     setTeachers(prev => prev.map(t => (t.id === id ? { ...t, ...updates } : t)));
+    // Si se actualiza el monitor actual, reflejar también en currentUser
+    if (currentUser && (currentUser.teacherId === id || currentTeacherId === id)) {
+      if (updates.name || updates.avatar) {
+        setCurrentUser(prev =>
+          prev
+            ? {
+                ...prev,
+                name: updates.name || prev.name,
+                photoURL: updates.avatar || prev.photoURL
+              }
+            : null
+        );
+      }
+    }
+  };
+
+  const updateTeacherAvatar = (teacherId: string, avatarUrl: string) => {
+    setTeachers(prev =>
+      prev.map(t => (t.id === teacherId ? { ...t, avatar: avatarUrl } : t))
+    );
+    if (currentUser && (currentUser.teacherId === teacherId || currentTeacherId === teacherId)) {
+      setCurrentUser(prev => (prev ? { ...prev, photoURL: avatarUrl } : null));
+    }
   };
 
   const deleteTeacher = (id: string) => {
@@ -431,6 +542,70 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteClassSession = (id: string) => {
     setSessions(prev => prev.filter(s => s.id !== id));
+  };
+
+  const recordClassPayment = (params: {
+    studentId: string;
+    activityId: string;
+    amount: number;
+    isPartial?: boolean;
+    paymentMethod?: PaymentMethod;
+    date?: string;
+    notes?: string;
+  }) => {
+    const student = students.find(s => s.id === params.studentId);
+    const act = activities.find(a => a.id === params.activityId);
+    const today = params.date || new Date().toISOString().split('T')[0];
+    const teacherId = act?.teacherId || currentTeacherId;
+    const method = params.paymentMethod || (act?.bizum_enabled ? 'bizum' : 'cash');
+
+    // Comprobar si ya existe un pago pendiente de este alumno para la actividad en el mes
+    const existingPending = payments.find(
+      p => p.studentId === params.studentId && p.activityId === params.activityId && p.periodMonth === selectedPeriod && p.status !== 'paid'
+    );
+
+    if (existingPending) {
+      const updatedNotes = params.isPartial
+        ? `Pago parcial en clase (${params.amount}€). ${params.notes || ''}`.trim()
+        : (params.notes || existingPending.notes || 'Cobrado en clase por monitor');
+
+      const updatedRecord: PaymentRecord = {
+        ...existingPending,
+        amount: params.amount,
+        status: 'paid',
+        paymentDate: today,
+        paymentMethod: method,
+        collectedByTeacher: true,
+        collectedByTeacherId: teacherId,
+        notes: updatedNotes
+      };
+
+      setPayments(prev => prev.map(p => (p.id === existingPending.id ? updatedRecord : p)));
+      return updatedRecord;
+    } else {
+      const receiptNumber = `REC-${selectedPeriod.replace('-', '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const newRecord: PaymentRecord = {
+        id: `pay-${Date.now()}`,
+        receiptNumber,
+        studentId: params.studentId,
+        studentName: student?.name || 'Alumno',
+        activityId: params.activityId,
+        activityName: act?.name || 'Clase',
+        periodMonth: selectedPeriod,
+        amount: params.amount,
+        status: 'paid',
+        paymentDate: today,
+        paymentMethod: method,
+        collectedByTeacher: true,
+        collectedByTeacherId: teacherId,
+        notes: params.isPartial
+          ? `Cobro parcial en clase (${params.amount}€). ${params.notes || ''}`.trim()
+          : (params.notes || 'Cobrado en clase por monitor')
+      };
+
+      setPayments(prev => [newRecord, ...prev]);
+      return newRecord;
+    }
   };
 
   // Liquidación formal de honorarios a profesor
@@ -676,9 +851,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addStudent,
         updateStudent,
         deleteStudent,
+        enrollStudentInActivity,
         addTeacher,
         updateTeacher,
         deleteTeacher,
+        updateTeacherAvatar,
         addActivity,
         updateActivity,
         deleteActivity,
@@ -686,6 +863,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteExpense,
         addClassSession,
         deleteClassSession,
+        recordClassPayment,
         settleTeacherPayout,
         resetToInitialData,
         exportToCSV,

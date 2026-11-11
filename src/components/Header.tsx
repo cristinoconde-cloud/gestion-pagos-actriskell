@@ -90,7 +90,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block">
-                Gestión de Alumnos, Honorarios de Profesores y Gastos
+                Gestión de Alumnos, Honorarios de Monitores y Gastos
               </p>
             </div>
           </div>
@@ -152,7 +152,7 @@ export const Header: React.FC<HeaderProps> = ({
                 }`}
               >
                 <GraduationCap className="h-3.5 w-3.5 text-indigo-500" />
-                <span>Profesor</span>
+                <span>Monitor</span>
               </button>
 
               <button
@@ -182,7 +182,7 @@ export const Header: React.FC<HeaderProps> = ({
                 }`}
               >
                 <span>⭐</span>
-                <span>Prof-Alumno</span>
+                <span>Monitor-Alumno</span>
               </button>
             </div>
 
@@ -264,7 +264,7 @@ export const Header: React.FC<HeaderProps> = ({
                     className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 hover:text-emerald-700 flex items-center gap-2 border-t border-slate-100 dark:border-slate-800"
                   >
                     <span>🎓</span>
-                    <span className="font-medium">Alta de Profesor</span>
+                    <span className="font-medium">Alta de Monitor</span>
                   </button>
                 </div>
               )}
@@ -322,7 +322,7 @@ export const Header: React.FC<HeaderProps> = ({
                     }}
                     className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
                   >
-                    Listado de Profesores
+                    Listado de Monitores
                   </button>
                 </div>
               )}
@@ -434,7 +434,7 @@ export const Header: React.FC<HeaderProps> = ({
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
-                🎓 Profesores & Liquidaciones
+                🎓 Monitores & Liquidaciones
               </button>
 
               <button
@@ -467,7 +467,7 @@ export const Header: React.FC<HeaderProps> = ({
                     : 'text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40'
                 }`}
               >
-                👤 Vista Profesor
+                👤 Vista Monitor
               </button>
 
               <button
@@ -483,7 +483,7 @@ export const Header: React.FC<HeaderProps> = ({
             </>
           )}
 
-          {/* Pestañas de Profesor / Monitor */}
+          {/* Pestañas de Monitor */}
           {currentRole === 'teacher' && (
             <>
               <button
@@ -494,7 +494,7 @@ export const Header: React.FC<HeaderProps> = ({
                     : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
-                👤 Mi Panel Docente (Clases, Alumnos y Liquidación)
+                👤 Mi Panel de Monitor (Clases, Alumnos y Liquidación)
               </button>
 
               <button
@@ -524,7 +524,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* Pestañas de Profesor-Alumno (Híbrido) */}
+          {/* Pestañas de Monitor-Alumno (Híbrido) */}
           {currentRole === 'teacher_student' && (
             <>
               <button
@@ -535,7 +535,7 @@ export const Header: React.FC<HeaderProps> = ({
                     : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
-                👤 Mi Labor como Profesor
+                👤 Mi Labor como Monitor
               </button>
 
               <button

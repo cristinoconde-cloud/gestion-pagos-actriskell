@@ -82,12 +82,12 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <GraduationCap className="h-5 w-5" />
-              <span className="text-[10px] mt-1 tracking-tight">Profesores</span>
+              <span className="text-[10px] mt-1 tracking-tight">Monitores</span>
             </button>
           </>
         )}
 
-        {/* ROL: PROFESOR */}
+        {/* ROL: MONITOR */}
         {currentRole === 'teacher' && (
           <>
             <button
@@ -99,7 +99,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <GraduationCap className="h-5 w-5" />
-              <span className="text-[10px] mt-1 tracking-tight">Mi Docencia</span>
+              <span className="text-[10px] mt-1 tracking-tight">Mi Monitoría</span>
             </button>
 
             <button
@@ -111,7 +111,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <Sparkles className="h-5 w-5" />
-              <span className="text-[10px] mt-1 tracking-tight">Mis Clases</span>
+              <span className="text-[10px] mt-1 tracking-tight">Mis Talleres</span>
             </button>
           </>
         )}
@@ -145,7 +145,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           </>
         )}
 
-        {/* ROL: PROFESOR-ALUMNO */}
+        {/* ROL: MONITOR-ALUMNO */}
         {currentRole === 'teacher_student' && (
           <>
             <button
@@ -157,7 +157,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <GraduationCap className="h-5 w-5" />
-              <span className="text-[10px] mt-1 tracking-tight">Profesor</span>
+              <span className="text-[10px] mt-1 tracking-tight">Monitor</span>
             </button>
 
             <button

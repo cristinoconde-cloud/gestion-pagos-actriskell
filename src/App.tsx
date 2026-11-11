@@ -15,6 +15,7 @@ import { AddTeacherModal } from './components/AddTeacherModal';
 import { AddActivityModal } from './components/AddActivityModal';
 import { AddExpenseModal } from './components/AddExpenseModal';
 import { AddSessionModal } from './components/AddSessionModal';
+import { EnrollStudentModal } from './components/EnrollStudentModal';
 import { SupabaseConfigModal } from './components/SupabaseConfigModal';
 import { GoogleAuthModal } from './components/GoogleAuthModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
@@ -46,6 +47,9 @@ const MainAppContent: React.FC = () => {
 
   const [isAddSessionOpen, setIsAddSessionOpen] = useState(false);
   const [sessionTeacherId, setSessionTeacherId] = useState<string | undefined>(undefined);
+
+  const [isEnrollStudentOpen, setIsEnrollStudentOpen] = useState(false);
+  const [enrollActivityId, setEnrollActivityId] = useState<string | undefined>(undefined);
 
   // Handlers para abrir modales
   const handleOpenRecordPayment = (payment?: PaymentRecord) => {
@@ -133,6 +137,12 @@ const MainAppContent: React.FC = () => {
           <TeacherPortalView
             onOpenAddSession={handleOpenAddSession}
             onOpenRecordPayment={() => handleOpenRecordPayment()}
+            onOpenAddActivity={() => handleOpenAddActivity()}
+            onOpenAddStudent={() => handleOpenAddStudent()}
+            onOpenEnrollStudent={(activityId?: string) => {
+              setEnrollActivityId(activityId);
+              setIsEnrollStudentOpen(true);
+            }}
           />
         )}
 
@@ -226,6 +236,17 @@ const MainAppContent: React.FC = () => {
             setSessionTeacherId(undefined);
           }}
           defaultTeacherId={sessionTeacherId}
+        />
+      )}
+
+      {isEnrollStudentOpen && (
+        <EnrollStudentModal
+          isOpen={isEnrollStudentOpen}
+          onClose={() => {
+            setIsEnrollStudentOpen(false);
+            setEnrollActivityId(undefined);
+          }}
+          initialActivityId={enrollActivityId}
         />
       )}
 

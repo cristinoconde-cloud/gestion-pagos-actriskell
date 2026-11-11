@@ -23,11 +23,13 @@ export interface Teacher {
   email: string;
   phone: string;
   avatar?: string;
+  avatarUrl?: string;
   paymentScheme: TeacherPaymentScheme;
   ratePerClass: number; // e.g., 25 € / clase
   fixedMonthlyRate: number; // e.g., 400 € / mes
   revenueSharePercent: number; // e.g., 60 % de cuotas de sus alumnos
   preferredPaymentMethod: PaymentMethod;
+  collectionType?: 'personal' | 'association'; // Tipo de cobro: Personal (directo alumno->monitor) o Asociación
   bankAccount?: string;
   active: boolean;
   notes?: string;
@@ -44,6 +46,9 @@ export interface Activity {
   defaultPriceMonthly: number;
   defaultPricePerClass: number;
   billingMode: 'monthly' | 'per_class';
+  bizum_enabled?: boolean;
+  bizum_phone?: string;
+  bizum_concept?: string;
   room: string;
   active: boolean;
 }
@@ -112,6 +117,16 @@ export interface CenterExpense {
   notes?: string;
 }
 
+export interface SessionAttendanceRecord {
+  studentId: string;
+  studentName: string;
+  attendance: 'present' | 'absent' | 'partial';
+  paid: boolean;
+  paidAmount?: number;
+  paymentMethod?: PaymentMethod;
+  paymentId?: string;
+}
+
 export interface ClassSession {
   id: string;
   activityId: string;
@@ -120,4 +135,5 @@ export interface ClassSession {
   attendeesCount: number;
   durationMinutes: number;
   topic?: string;
+  attendanceRecords?: SessionAttendanceRecord[];
 }
