@@ -229,7 +229,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         </div>
 
         {/* LA TIRA DE 7 DÍAS (1: Ayer, 2: Hoy, 3..7: +5 Días) */}
-        <div className="grid grid-cols-7 gap-1.5 sm:gap-2.5 overflow-x-auto pb-1 no-scrollbar">
+        <div className="grid grid-cols-7 gap-1.5 sm:gap-2.5 overflow-x-auto pt-3 pb-1 no-scrollbar">
           {sevenDays.map((day, idx) => {
             const isSelected = selectedDayIndex === idx;
 
