@@ -450,7 +450,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const emailNormalized = userEmail.toLowerCase().trim();
-      const isMasterAdmin = emailNormalized === 'cristinoconde@gmail.com';
+      const isMasterAdmin = emailNormalized === 'cristino.conde@actriskell.org';
 
       // 1. Buscar en profiles por ID o por email
       const { data: profileByUid } = await supabase
@@ -654,7 +654,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const emailNorm = email.toLowerCase().trim();
 
       // Verificar primero que el correo esté autorizado por el coordinador
-      const isMaster = emailNorm === 'cristinoconde@gmail.com';
+      const isMaster = emailNorm === 'cristino.conde@actriskell.org';
       const [profileCheck, teacherCheck, studentCheck] = await Promise.all([
         supabase.from('profiles').select('id').ilike('email', emailNorm).maybeSingle(),
         supabase.from('teachers').select('id').ilike('email', emailNorm).maybeSingle(),

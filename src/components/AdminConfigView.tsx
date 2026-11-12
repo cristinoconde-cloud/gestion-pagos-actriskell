@@ -97,7 +97,7 @@ ON public.app_config FOR SELECT TO authenticated USING (true);
 -- Política de modificación para administradores
 CREATE POLICY "Modificación app_config para coordinadores" 
 ON public.app_config FOR ALL TO authenticated 
-USING (auth.jwt() ->> 'email' = 'cristinoconde@gmail.com' OR EXISTS (
+USING (auth.jwt() ->> 'email' = 'cristino.conde@actriskell.org' OR EXISTS (
   SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'
 ));`;
 

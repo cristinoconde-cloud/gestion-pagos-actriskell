@@ -101,7 +101,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess }) => {
       setCurrentUser({
         id: 'usr-admin-cristino',
         name: 'Cristino Conde',
-        email: 'cristinoconde@gmail.com',
+        email: 'cristino.conde@actriskell.org',
         role: 'admin',
         provider: 'google',
         lastLogin: new Date().toISOString()
