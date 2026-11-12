@@ -83,7 +83,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                Acceso a TRISKELL
+                Acceso a App TRISKELL
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 Identificación de Socios, Monitores y Coordinación

@@ -1,5 +1,5 @@
 {
-  "name": "Triskell - Control de Pagos y Profesores",
+  "name": "A.C.Triskell - Control de Pagos y Profesores",
   "description": "Sistema de gestión integral para academias y centros: cobro de cuotas a alumnos, liquidación a profesores por clase o mensualidad, gastos operativos y balance contable.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

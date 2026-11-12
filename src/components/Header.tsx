@@ -82,7 +82,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-black text-white shadow-md overflow-hidden p-1">
               <img 
-                src="/logo.jpg" 
+                src="/logo.png" 
                 alt="Logo Triskell" 
                 className="h-full w-full object-contain"
               />
@@ -90,7 +90,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-base font-extrabold tracking-tight text-slate-900 dark:text-white">
-                  TRISKELL
+                  A.C.TRISKELL
                 </span>
                 <span className="hidden sm:inline-block rounded-md bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-300/40 dark:border-emerald-700/50">
                   Control de Pagos

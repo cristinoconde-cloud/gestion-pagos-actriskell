@@ -143,23 +143,15 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess }) => {
         {/* Cabecera / Logo */}
         <div className="flex flex-col items-center text-center mb-6">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-white shadow-lg shadow-emerald-600/30 mb-3 border border-emerald-400/30">
-            <svg
-              className="h-10 w-10 text-emerald-100"
-              viewBox="0 0 100 100"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M50 50 A16 16 0 0 1 66 34 A16 16 0 0 1 82 50 A16 16 0 0 1 66 66 A8 8 0 0 1 58 58" />
-              <path d="M50 50 A16 16 0 0 1 36 66 A16 16 0 0 1 20 50 A16 16 0 0 1 36 34 A8 8 0 0 1 44 42" />
-              <path d="M50 50 A16 16 0 0 1 50 18 A16 16 0 0 1 50 2 A16 16 0 0 1 50 18 A8 8 0 0 1 50 26" transform="rotate(120 50 50)" />
-              <circle cx="50" cy="50" r="4" fill="currentColor" />
-            </svg>
+            {/* Imagen del logo con la animación de giro continuo */}
+            <img 
+              src="/logo.png" 
+              alt="Logo Triskell" 
+              className="h-full w-full object-contain animate-[spin_12s_linear_infinite]"
+            />
           </div>
           <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-            TRISKELL
+            A.C.TRISKELL
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Gestión de Asociación, Monitores y Alumnos

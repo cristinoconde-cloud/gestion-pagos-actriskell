@@ -8,7 +8,7 @@ interface SplashScreenProps {
 
 export const SplashScreen: React.FC<SplashScreenProps> = ({
   onFinish,
-  appName = 'TRISKELL',
+  appName = 'A.C.TRISKELL',
   duration = 1600
 }) => {
   const [fading, setFading] = useState(false);
@@ -44,24 +44,12 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
         <div className="relative mb-6">
           <div className="absolute -inset-4 rounded-3xl bg-gradient-to-r from-emerald-500 to-teal-400 opacity-40 blur-xl animate-pulse" />
           <div className="relative flex h-28 w-28 items-center justify-center rounded-3xl bg-gradient-to-br from-emerald-500 via-emerald-600 to-emerald-800 text-white shadow-2xl shadow-emerald-500/40 border border-emerald-400/30">
-            {/* SVG del Trisquel Céltico Sagrado de 3 espirales entrelazadas */}
-            <svg
-              className="h-16 w-16 text-emerald-100 animate-[spin_12s_linear_infinite]"
-              viewBox="0 0 100 100"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              {/* Espiral 1 */}
-              <path d="M50 50 A16 16 0 0 1 66 34 A16 16 0 0 1 82 50 A16 16 0 0 1 66 66 A8 8 0 0 1 58 58" />
-              {/* Espiral 2 */}
-              <path d="M50 50 A16 16 0 0 1 36 66 A16 16 0 0 1 20 50 A16 16 0 0 1 36 34 A8 8 0 0 1 44 42" />
-              {/* Espiral 3 */}
-              <path d="M50 50 A16 16 0 0 1 50 18 A16 16 0 0 1 50 2 A16 16 0 0 1 50 18 A8 8 0 0 1 50 26" transform="rotate(120 50 50)" />
-              <circle cx="50" cy="50" r="4" fill="currentColor" />
-            </svg>
+            {/* Imagen del logo con la animación de giro continuo */}
+            <img 
+              src="/logo.png" 
+              alt="Logo Triskell" 
+              className="h-full w-full object-contain animate-[spin_12s_linear_infinite]"
+            />
           </div>
         </div>
 
