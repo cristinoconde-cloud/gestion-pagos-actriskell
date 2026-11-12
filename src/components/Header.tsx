@@ -80,8 +80,12 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex h-16 items-center justify-between gap-4">
           {/* Logo & Marca Triskell */}
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-800 text-white shadow-md shadow-emerald-700/20 font-black text-xl">
-              🌀
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-black text-white shadow-md overflow-hidden p-1">
+              <img 
+                src="/logo.jpg" 
+                alt="Logo Triskell" 
+                className="h-full w-full object-contain"
+              />
             </div>
             <div>
               <div className="flex items-center gap-2">
