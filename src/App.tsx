@@ -305,10 +305,10 @@ const MainAppContent: React.FC = () => {
       </main>
 
       {/* Pie de página sutil */}
-      <footer className="border-t border-slate-200/80 dark:border-slate-800 py-6 text-center text-xs text-slate-500 dark:text-slate-400 no-print">
+      <footer className="border-t border-slate-200/80 dark:border-slate-800 py-4 pb-16 md:pb-6 text-center text-xs text-slate-500 dark:text-slate-400 no-print">
         <div className="flex items-center justify-center gap-2 mb-1">
           <span className="font-extrabold tracking-tight text-slate-800 dark:text-slate-200">
-            TRISKELL
+            A.C.TRISKELL
           </span>
           <span>·</span>
           <span>Control de Pagos y Liquidaciones</span>
