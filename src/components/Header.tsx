@@ -144,7 +144,7 @@ export const Header: React.FC<HeaderProps> = ({
                 }`}
               >
                 <Building className="h-3.5 w-3.5 text-emerald-600" />
-                <span>Coordinador</span>
+                <span>Administrador</span>
               </button>
 
               <button
@@ -359,7 +359,7 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse hidden sm:inline-block" />
             </button>
 
-            {/* Gestión de Usuarios (Exclusivo Coordinador) */}
+            {/* Gestión de Usuarios (Exclusivo Administrador) */}
             {currentRole === 'admin' && (
               <button
                 onClick={onOpenUserManagement}
@@ -434,7 +434,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Pestañas de Navegación Dinámicas según Rol */}
         <nav className="hidden md:flex space-x-1 sm:space-x-4 border-t border-slate-200/60 dark:border-slate-800/60 py-2.5 overflow-x-auto text-xs font-semibold">
-          {/* Pestañas de Administrador / Coordinador */}
+          {/* Pestañas de Administrador / Administrador */}
           {currentRole === 'admin' && (
             <>
               <button

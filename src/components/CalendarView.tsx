@@ -304,7 +304,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             </p>
           </div>
 
-          {/* Botón rápido para coordinadores / monitores */}
+          {/* Botón rápido para administradores / monitores */}
           {onOpenAddSession && (currentRole === 'admin' || currentRole === 'teacher') && (
             <button
               type="button"
@@ -416,7 +416,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Botón Publicar Nota (Coordinador) */}
+            {/* Botón Publicar Nota (Administrador) */}
             {currentRole === 'admin' && (
               <button
                 type="button"

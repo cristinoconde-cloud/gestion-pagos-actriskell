@@ -95,7 +95,7 @@ CREATE POLICY "Lectura app_config para usuarios autenticados"
 ON public.app_config FOR SELECT TO authenticated USING (true);
 
 -- Política de modificación para administradores
-CREATE POLICY "Modificación app_config para coordinadores" 
+CREATE POLICY "Modificación app_config para administradores" 
 ON public.app_config FOR ALL TO authenticated 
 USING (auth.jwt() ->> 'email' = 'cristino.conde@actriskell.org' OR EXISTS (
   SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'
@@ -135,7 +135,7 @@ USING (auth.jwt() ->> 'email' = 'cristino.conde@actriskell.org' OR EXISTS (
             </h2>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Panel exclusivo para Coordinadores. Modifica parámetros de la app, activa calendarios, comunicados emergentes y notas en tiempo real.
+            Panel exclusivo para administradores. Modifica parámetros de la app, activa calendarios, comunicados emergentes y notas en tiempo real.
           </p>
         </div>
 

@@ -96,7 +96,7 @@ interface AppContextType {
   refreshFromSupabase: () => Promise<void>;
   seedInitialDataToSupabase: () => Promise<void>;
 
-  // Gestión de Usuarios y Accesos (Exclusivo Coordinador)
+  // Gestión de Usuarios y Accesos (Exclusivo Administrador)
   profiles: AuthUser[];
   createUserByCoordinator: (params: {
     email: string;
@@ -263,7 +263,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     console.error(`[Supabase Error] ${contextMsg}:`, error);
     let msg = error?.message || 'Error de comunicación con Supabase';
     if (error?.code === '42501' || msg.includes('permission denied') || msg.includes('row-level security')) {
-      msg = `Permiso RLS denegado: Tu usuario actual no tiene permisos suficientes para ${contextMsg.toLowerCase()}. Inicia sesión con la cuenta de Coordinador.`;
+      msg = `Permiso RLS denegado: Tu usuario actual no tiene permisos suficientes para ${contextMsg.toLowerCase()}. Inicia sesión con la cuenta de Administrador.`;
     }
     setDbError(msg);
   }, []);
@@ -480,7 +480,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .ilike('email', emailNormalized)
         .maybeSingle();
 
-      // Comprobar si el usuario fue autorizado previamente por el Coordinador
+      // Comprobar si el usuario fue autorizado previamente por el Administrador
       const isWhitelisted = isMasterAdmin || Boolean(existingProfile) || Boolean(teacherMatch) || Boolean(studentMatch);
 
       if (!isWhitelisted) {
@@ -653,7 +653,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const emailNorm = email.toLowerCase().trim();
 
-      // Verificar primero que el correo esté autorizado por el coordinador
+      // Verificar primero que el correo esté autorizado por el administrador
       const isMaster = emailNorm === 'cristino.conde@actriskell.org';
       const [profileCheck, teacherCheck, studentCheck] = await Promise.all([
         supabase.from('profiles').select('id').ilike('email', emailNorm).maybeSingle(),
@@ -847,7 +847,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
 
   // ==============================================================================
-  // GESTIÓN EXCLUSIVA DE USUARIOS POR EL COORDINADOR (auth.users + profiles)
+  // GESTIÓN EXCLUSIVA DE USUARIOS POR EL ADMINISTRADOR (auth.users + profiles)
   // ==============================================================================
 
   const createUserByCoordinator = async (params: {

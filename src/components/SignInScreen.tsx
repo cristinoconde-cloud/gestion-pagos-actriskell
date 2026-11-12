@@ -24,7 +24,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberBiometrics, setRememberBiometrics] = useState(true);
+  const [rememberBiometrics, setRememberBiometrics] = useState(false);
   const [loading, setLoading] = useState(false);
   const [biometricLoading, setBiometricLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -283,6 +283,14 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess }) => {
             </div>
           </div>
 
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white py-2.5 px-4 text-xs font-bold transition shadow-md shadow-emerald-600/20 min-h-[44px]"
+          >
+            {loading ? 'Verificando acceso...' : 'Iniciar Sesión'}
+          </button>
+
           {/* Opción Biometría */}
           {isBiometricsSupported && (
             <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-600 dark:text-slate-400">
@@ -297,15 +305,8 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess }) => {
                 Habilitar desbloqueo biométrico en este dispositivo
               </span>
             </label>
-          )}
+          )}          
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white py-2.5 px-4 text-xs font-bold transition shadow-md shadow-emerald-600/20 min-h-[44px]"
-          >
-            {loading ? 'Verificando acceso...' : 'Iniciar Sesión'}
-          </button>
         </form>
 
         {/* Acceso Rápido Demo (Ambiente AI Studio) */}
@@ -319,7 +320,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess }) => {
               onClick={() => handleDemoLogin('admin')}
               className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 p-2 text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-500/40 transition active:scale-95"
             >
-              👑 Coordinador
+              👑 Admin
             </button>
             <button
               type="button"

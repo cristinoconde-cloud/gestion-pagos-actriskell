@@ -416,7 +416,7 @@ const MainAppContent: React.FC = () => {
         onClose={() => setIsAuthModalOpen(false)}
       />
 
-      {/* Modal de Gestión de Usuarios y Accesos para el Coordinador */}
+      {/* Modal de Gestión de Usuarios y Accesos para el Administrador */}
       {isUserManagementOpen && (
         <UserManagementModal
           isOpen={isUserManagementOpen}

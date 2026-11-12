@@ -110,7 +110,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                 </span>
                 <span className="rounded-full bg-emerald-600/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
                   {currentUser.role === 'admin'
-                    ? 'Coordinador'
+                    ? 'Administrador'
                     : currentUser.role === 'teacher'
                     ? 'Monitor'
                     : currentUser.role === 'student'
@@ -141,7 +141,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                 </div>
               </div>
 
-              {/* Si es coordinador o híbrido, permitir alternar vista */}
+              {/* Si es administrador o híbrido, permitir alternar vista */}
               {(currentUser.role === 'admin' || currentUser.role === 'teacher_student') && (
                 <div className="pt-2 border-t border-emerald-200 dark:border-emerald-900/60">
                   <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1.5">
@@ -158,7 +158,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                             : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                         }`}
                       >
-                        👑 Coordinador
+                        👑 Administrador
                       </button>
                     )}
                     <button

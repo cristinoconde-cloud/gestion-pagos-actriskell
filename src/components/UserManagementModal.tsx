@@ -89,7 +89,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
         setCreatedCredentials({
           email: email.trim(),
           pass: passUsed,
-          role: role === 'admin' ? 'Coordinador' : role === 'teacher' ? 'Monitor' : role === 'student' ? 'Alumno' : 'Monitor-Alumno'
+          role: role === 'admin' ? 'Administrador' : role === 'teacher' ? 'Monitor' : role === 'student' ? 'Alumno' : 'Monitor-Alumno'
         });
         setFeedbackSuccess(`¡Usuario "${name}" dado de alta con éxito en auth.users y tabla profiles!`);
         setName('');
@@ -137,7 +137,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Solo el Coordinador puede autorizar correos y asignar roles para entrar a la plataforma
+                Solo el Administrador puede autorizar correos y asignar roles para entrar a la plataforma
               </p>
             </div>
           </div>
@@ -220,7 +220,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
             </button>
           </div>
 
-          {/* Formulario de Alta por el Coordinador */}
+          {/* Formulario de Alta por el Administrador */}
           {isAddingUser ? (
             <form onSubmit={handleCreateSubmit} className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-850 p-4 space-y-3.5">
               <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2">
@@ -274,7 +274,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                     <option value="student">🎒 Alumno / Socio</option>
                     <option value="teacher">🎓 Monitor de Talleres</option>
                     <option value="teacher_student">⭐ Monitor-Alumno (Híbrido)</option>
-                    <option value="admin">👑 Coordinador (Administrador Total)</option>
+                    <option value="admin">👑 Administrador (Administrador Total)</option>
                   </select>
                 </div>
 
@@ -455,7 +455,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                           <option value="student">🎒 Alumno</option>
                           <option value="teacher">🎓 Monitor</option>
                           <option value="teacher_student">⭐ Monitor-Alumno</option>
-                          <option value="admin">👑 Coordinador</option>
+                          <option value="admin">👑 Administrador</option>
                         </select>
 
                         {!isCurrent && (
