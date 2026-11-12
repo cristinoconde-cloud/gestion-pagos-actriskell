@@ -111,7 +111,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess }) => {
       setCurrentUser({
         id: 'usr-teacher-elena',
         name: 'Elena Morales Soto',
-        email: 'elena.morales@triskell.es',
+        email: 'elena.morales@actriskell.org',
         role: 'teacher',
         teacherId: 't-1',
         provider: 'email',
@@ -261,7 +261,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess }) => {
                 required
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="ejemplo@triskell.es"
+                placeholder="ejemplo@actriskell.org"
                 className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500 min-h-[40px]"
               />
             </div>

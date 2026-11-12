@@ -125,7 +125,7 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
                 </label>
                 <input
                   type="email"
-                  placeholder="profesor@triskell.es"
+                  placeholder="profesor@actriskell.org"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"

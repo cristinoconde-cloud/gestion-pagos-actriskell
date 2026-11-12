@@ -267,7 +267,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
               <input
                 type="email"
                 required
-                placeholder="tu.correo@asociacion.es"
+                placeholder="tu.correo@actriskell.org"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white font-medium focus:outline-emerald-500"

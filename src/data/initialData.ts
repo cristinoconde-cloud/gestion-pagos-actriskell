@@ -3,9 +3,9 @@ import { Teacher, Activity, Student, PaymentRecord, TeacherPayout, CenterExpense
 export const INITIAL_TEACHERS: Teacher[] = [
   {
     id: 't-1',
-    name: 'Elena Morales Soto',
-    email: 'elena.morales@triskell.es',
-    phone: '+34 612 345 678',
+    name: 'Alex Fente',
+    email: 'alex.fente@actriskell.org',
+    phone: '+34 000 000 000',
     avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80',
     paymentScheme: 'per_class',
     ratePerClass: 30, // 30€ por clase impartida
@@ -19,8 +19,8 @@ export const INITIAL_TEACHERS: Teacher[] = [
   },
   {
     id: 't-2',
-    name: 'Carlos Benítez Vega',
-    email: 'carlos.benitez@triskell.es',
+    name: 'Maria Haz',
+    email: 'maria.haz@actriskell.org',
     phone: '+34 620 987 654',
     avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
     paymentScheme: 'revenue_share',
@@ -36,7 +36,7 @@ export const INITIAL_TEACHERS: Teacher[] = [
   {
     id: 't-3',
     name: 'Nuria Garrido Rivas',
-    email: 'nuria.garrido@triskell.es',
+    email: 'nuria.garrido@actriskell.org',
     phone: '+34 655 432 109',
     avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80',
     paymentScheme: 'monthly_fixed',
@@ -51,9 +51,9 @@ export const INITIAL_TEACHERS: Teacher[] = [
   },
   {
     id: 't-4',
-    name: 'Marc Dubois',
-    email: 'marc.dubois@triskell.es',
-    phone: '+34 689 112 233',
+    name: 'Bieito Romero',
+    email: 'bieito.romero@actriskell.org',
+    phone: '+34 000 000 000',
     avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80',
     paymentScheme: 'per_class',
     ratePerClass: 25,
@@ -63,7 +63,7 @@ export const INITIAL_TEACHERS: Teacher[] = [
     collectionType: 'personal', // Por defecto: cobro directo alumno -> monitor
     bankAccount: '',
     active: true,
-    notes: 'Monitor nativo de Francés B1-B2 e Iniciación.'
+    notes: 'Monitor Gaita Iniciación.'
   }
 ];
 
@@ -664,7 +664,7 @@ export const INITIAL_APP_CONFIGS: AppConfigSetting[] = [
   },
   {
     config_key: 'google_calendar',
-    config_value: 'triskell_calendario_general@asociacion.es',
+    config_value: 'triskell_calendario_general@actriskell.org',
     is_active: true,
     description: 'Integración y visualización del calendario en vivo con tira semanal de 7 días'
   },
