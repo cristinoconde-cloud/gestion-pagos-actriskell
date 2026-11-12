@@ -308,7 +308,6 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess }) => {
           )}          
 
         </form>
-
         {/* Acceso Rápido Demo (Ambiente AI Studio) */}
         <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 text-center">
           <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2.5">
@@ -320,7 +319,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess }) => {
               onClick={() => handleDemoLogin('admin')}
               className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 p-2 text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-500/40 transition active:scale-95"
             >
-              👑 Admin
+              👑 Coordinador
             </button>
             <button
               type="button"
@@ -338,6 +337,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess }) => {
             </button>
           </div>
         </div>
+        
       </div>
     </div>
   );

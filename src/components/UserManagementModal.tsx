@@ -26,7 +26,7 @@ interface UserManagementModalProps {
 export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen, onClose }) => {
   const {
     profiles,
-    createUserByCoordinator,
+    createUserByAdmin,
     updateUserRole,
     deleteUserAccess,
     teachers,
@@ -71,7 +71,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
     setFeedbackSuccess(null);
 
     try {
-      const res = await createUserByCoordinator({
+      const res = await createUserByAdmin({
         email: email.trim(),
         fullName: name.trim(),
         role,
@@ -228,7 +228,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                   <UserCheck className="h-4 w-4 text-emerald-600" />
                   Alta de Usuario con Registro en Auth & Profiles
                 </h4>
-                <span className="text-[10px] text-slate-400">Control de Coordinación</span>
+                <span className="text-[10px] text-slate-400">Control de Administración</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

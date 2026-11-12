@@ -695,7 +695,7 @@ export const INITIAL_NEWS_NOTES: NewsNote[] = [
     content: 'Comenzamos nuevo bloque formativo en Sala 1. Los alumnos inscritos pueden abonar sus cuotas directamente en mano con la monitora Elena Morales o vía Bizum oficial.',
     date: '2026-11-10',
     category: 'taller',
-    author: 'Coordinación Triskell',
+    author: 'Administración Triskell',
     pinned: true
   },
   {

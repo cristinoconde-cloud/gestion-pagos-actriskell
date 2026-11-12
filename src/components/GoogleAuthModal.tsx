@@ -86,7 +86,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                 Acceso a App TRISKELL
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Identificación de Socios, Monitores y Coordinación
+                Identificación de Socios, Monitores y Administración
               </p>
             </div>
           </div>
@@ -213,7 +213,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
           <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850 p-3 flex items-start gap-2.5 text-slate-600 dark:text-slate-400">
             <Lock className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
             <p className="text-[11px] leading-relaxed">
-              El acceso a TRISKELL es restringido. Las altas de alumnos y monitores se gestionan exclusivamente desde la Coordinación.
+              El acceso a TRISKELL es restringido. Las altas de alumnos y monitores se gestionan exclusivamente desde la Administración.
             </p>
           </div>
 
@@ -246,7 +246,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
               <span>Acceder con Cuenta de Google</span>
             </button>
             <p className="text-[10px] text-center text-slate-400">
-              (El correo debe coincidir con el dado de alta por la coordinación)
+              (El correo debe coincidir con el dado de alta por la Administración)
             </p>
           </div>
 
@@ -281,7 +281,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
               <input
                 type="password"
                 required
-                placeholder="Contraseña facilitada por coordinación"
+                placeholder="Contraseña facilitada por administración"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white font-medium focus:outline-emerald-500"

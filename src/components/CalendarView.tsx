@@ -192,7 +192,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       content: noteContent.trim(),
       date: new Date().toISOString().split('T')[0],
       category: noteCategory,
-      author: currentRole === 'admin' ? 'Coordinación Triskell' : 'Equipo Docente',
+      author: currentRole === 'admin' ? 'Administración Triskell' : 'Equipo Docente',
       pinned: notePinned
     });
 

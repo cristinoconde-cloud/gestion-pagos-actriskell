@@ -98,7 +98,7 @@ interface AppContextType {
 
   // Gestión de Usuarios y Accesos (Exclusivo Administrador)
   profiles: AuthUser[];
-  createUserByCoordinator: (params: {
+  createUserByAdmin: (params: {
     email: string;
     fullName: string;
     role: UserRole;
@@ -487,7 +487,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn(`[TRISKELL AUTH] Acceso no autorizado para correo: ${emailNormalized}`);
         await supabase.auth.signOut();
         setCurrentUser(null);
-        setDbError(`Acceso Denegado: El correo "${userEmail}" no ha sido dado de alta por la Coordinación de TRISKELL. Solicita al administrador tu alta para poder acceder.`);
+        setDbError(`Acceso Denegado: El correo "${userEmail}" no ha sido dado de alta por la Administración de TRISKELL. Solicita al administrador tu alta para poder acceder.`);
         return;
       }
 
@@ -850,7 +850,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // GESTIÓN EXCLUSIVA DE USUARIOS POR EL ADMINISTRADOR (auth.users + profiles)
   // ==============================================================================
 
-  const createUserByCoordinator = async (params: {
+  const createUserByAdmin = async (params: {
     email: string;
     fullName: string;
     role: UserRole;
@@ -932,7 +932,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: true, tempPassword };
 
     } catch (err: any) {
-      console.error('Error creating user by coordinator:', err);
+      console.error('Error creating user by administrator:', err);
       return { success: false, error: err.message || 'Error al registrar el usuario' };
     }
   };
@@ -1674,7 +1674,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         refreshFromSupabase,
         seedInitialDataToSupabase,
         profiles,
-        createUserByCoordinator,
+        createUserByAdmin,
         updateUserRole,
         deleteUserAccess,
         teachers,
