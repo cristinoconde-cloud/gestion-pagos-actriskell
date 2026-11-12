@@ -46,20 +46,15 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             </button>
 
             <button
-              onClick={() => setCurrentTab('payments')}
-              className={`relative flex flex-col items-center justify-center flex-1 py-1 transition-colors min-h-[44px] ${
-                currentTab === 'payments'
+              onClick={() => setCurrentTab('calendar')}
+              className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors min-h-[44px] ${
+                currentTab === 'calendar'
                   ? 'text-emerald-600 dark:text-emerald-400 font-bold'
                   : 'text-slate-500 dark:text-slate-400'
               }`}
             >
-              <CreditCard className="h-5 w-5" />
-              <span className="text-[10px] mt-1 tracking-tight">Cuotas</span>
-              {pendingCount > 0 && (
-                <span className="absolute top-1 right-3 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-black text-white shadow-xs">
-                  {pendingCount}
-                </span>
-              )}
+              <Calendar className="h-5 w-5" />
+              <span className="text-[10px] mt-1 tracking-tight">Calendario</span>
             </button>
 
             {/* Botón Central Rápido "+" */}
@@ -74,15 +69,20 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             </div>
 
             <button
-              onClick={() => setCurrentTab('teachers')}
-              className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors min-h-[44px] ${
-                currentTab === 'teachers'
+              onClick={() => setCurrentTab('payments')}
+              className={`relative flex flex-col items-center justify-center flex-1 py-1 transition-colors min-h-[44px] ${
+                currentTab === 'payments'
                   ? 'text-emerald-600 dark:text-emerald-400 font-bold'
                   : 'text-slate-500 dark:text-slate-400'
               }`}
             >
-              <GraduationCap className="h-5 w-5" />
-              <span className="text-[10px] mt-1 tracking-tight">Monitores</span>
+              <CreditCard className="h-5 w-5" />
+              <span className="text-[10px] mt-1 tracking-tight">Cuotas</span>
+              {pendingCount > 0 && (
+                <span className="absolute top-1 right-2 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-black text-white shadow-xs">
+                  {pendingCount}
+                </span>
+              )}
             </button>
           </>
         )}
@@ -103,6 +103,18 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             </button>
 
             <button
+              onClick={() => setCurrentTab('calendar')}
+              className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors min-h-[44px] ${
+                currentTab === 'calendar'
+                  ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+                  : 'text-slate-500 dark:text-slate-400'
+              }`}
+            >
+              <Calendar className="h-5 w-5" />
+              <span className="text-[10px] mt-1 tracking-tight">Calendario</span>
+            </button>
+
+            <button
               onClick={() => setCurrentTab('activities')}
               className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors min-h-[44px] ${
                 currentTab === 'activities'
@@ -111,7 +123,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <Sparkles className="h-5 w-5" />
-              <span className="text-[10px] mt-1 tracking-tight">Mis Talleres</span>
+              <span className="text-[10px] mt-1 tracking-tight">Talleres</span>
             </button>
           </>
         )}
@@ -129,6 +141,18 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             >
               <BookOpen className="h-5 w-5" />
               <span className="text-[10px] mt-1 tracking-tight">Mis Cuotas</span>
+            </button>
+
+            <button
+              onClick={() => setCurrentTab('calendar')}
+              className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors min-h-[44px] ${
+                currentTab === 'calendar'
+                  ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+                  : 'text-slate-500 dark:text-slate-400'
+              }`}
+            >
+              <Calendar className="h-5 w-5" />
+              <span className="text-[10px] mt-1 tracking-tight">Calendario</span>
             </button>
 
             <button

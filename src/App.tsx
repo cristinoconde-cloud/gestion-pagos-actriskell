@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { AppProvider, useApp, TeacherFinancialSummary } from './context/AppContext';
 import { Header } from './components/Header';
 import { DashboardView } from './components/DashboardView';
@@ -8,6 +8,11 @@ import { ActivitiesView } from './components/ActivitiesView';
 import { ExpensesView } from './components/ExpensesView';
 import { TeacherPortalView } from './components/TeacherPortalView';
 import { StudentPortalView } from './components/StudentPortalView';
+import { CalendarView } from './components/CalendarView';
+import { AdminConfigView } from './components/AdminConfigView';
+import { SplashScreen } from './components/SplashScreen';
+import { SignInScreen } from './components/SignInScreen';
+import { ConditionalNotificationModal } from './components/ConditionalNotificationModal';
 import { RecordPaymentModal } from './components/RecordPaymentModal';
 import { RecordTeacherPayoutModal } from './components/RecordTeacherPayoutModal';
 import { AddStudentModal } from './components/AddStudentModal';
@@ -33,10 +38,13 @@ const MainAppContent: React.FC = () => {
     dbError,
     clearDbError,
     refreshFromSupabase,
-    isLoadingDb
+    isLoadingDb,
+    currentUser,
+    appConfigs
   } = useApp();
 
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
+
   const [isSupabaseConfigOpen, setIsSupabaseConfigOpen] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
 
@@ -63,6 +71,84 @@ const MainAppContent: React.FC = () => {
 
   const [isEnrollStudentOpen, setIsEnrollStudentOpen] = useState(false);
   const [enrollActivityId, setEnrollActivityId] = useState<string | undefined>(undefined);
+
+  // Estado para la Splash Screen
+  const [showSplash, setShowSplash] = useState(true);
+
+  // Estado para el Comunicado Emergente condicional (app_config.popup_notification)
+  const [isConditionalPopupOpen, setIsConditionalPopupOpen] = useState(false);
+  const [popupMessage, setPopupMessage] = useState('');
+
+  // Finalizar splash screen y comprobar pop-up
+  const handleSplashFinish = () => {
+    setShowSplash(false);
+    // Verificar si hay comunicado activo en app_config
+    const popupCfg = appConfigs.find(c => c.config_key === 'popup_notification');
+    if (popupCfg && popupCfg.is_active && popupCfg.config_value) {
+      try {
+        const isDismissed = sessionStorage.getItem('triskell_popup_dismissed');
+        if (!isDismissed) {
+          setPopupMessage(popupCfg.config_value);
+          setIsConditionalPopupOpen(true);
+        }
+      } catch {
+        setPopupMessage(popupCfg.config_value);
+        setIsConditionalPopupOpen(true);
+      }
+    }
+  };
+
+  // Gestos táctiles de deslizamiento horizontal (Swipe izquierda / derecha) entre pestañas
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [touchStartY, setTouchStartY] = useState<number | null>(null);
+
+  const availableTabsForRole = useMemo(() => {
+    switch (currentRole) {
+      case 'admin':
+        return ['dashboard', 'calendar', 'payments', 'teachers', 'activities', 'expenses', 'admin-config', 'teacher-portal', 'student-portal'];
+      case 'teacher':
+        return ['teacher-portal', 'calendar', 'activities'];
+      case 'student':
+        return ['student-portal', 'calendar'];
+      case 'teacher_student':
+        return ['teacher-portal', 'student-portal', 'calendar', 'activities'];
+      default:
+        return ['dashboard', 'calendar'];
+    }
+  }, [currentRole]);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStartX(e.touches[0].clientX);
+    setTouchStartY(e.touches[0].clientY);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX === null || touchStartY === null) return;
+    const touchEndX = e.changedTouches[0].clientX;
+    const touchEndY = e.changedTouches[0].clientY;
+
+    const deltaX = touchEndX - touchStartX;
+    const deltaY = touchEndY - touchStartY;
+
+    // Detectar swipe horizontal mínimo de 60px y dominante sobre el eje vertical
+    if (Math.abs(deltaX) > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3) {
+      const currentIndex = availableTabsForRole.indexOf(currentTab);
+      if (currentIndex !== -1) {
+        if (deltaX < 0) {
+          // Deslizar izquierda -> Pestaña siguiente
+          const nextIndex = (currentIndex + 1) % availableTabsForRole.length;
+          setCurrentTab(availableTabsForRole[nextIndex]);
+        } else {
+          // Deslizar derecha -> Pestaña anterior
+          const prevIndex = (currentIndex - 1 + availableTabsForRole.length) % availableTabsForRole.length;
+          setCurrentTab(availableTabsForRole[prevIndex]);
+        }
+      }
+    }
+
+    setTouchStartX(null);
+    setTouchStartY(null);
+  };
 
   // Handlers para abrir modales
   const handleOpenRecordPayment = (payment?: PaymentRecord) => {
@@ -95,8 +181,22 @@ const MainAppContent: React.FC = () => {
     setIsAddSessionOpen(true);
   };
 
+  // Renderizar Splash Screen mientras se inicia
+  if (showSplash) {
+    return <SplashScreen onFinish={handleSplashFinish} />;
+  }
+
+  // Si no hay usuario autenticado ni credencial activa, mostrar pantalla de inicio de sesión
+  if (!currentUser) {
+    return <SignInScreen />;
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col font-sans transition-colors duration-200">
+    <div
+      className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col font-sans transition-colors duration-200"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       <Header
         currentTab={currentTab}
         setCurrentTab={setCurrentTab}
@@ -190,6 +290,17 @@ const MainAppContent: React.FC = () => {
 
         {currentTab === 'student-portal' && (
           <StudentPortalView />
+        )}
+
+        {currentTab === 'calendar' && (
+          <CalendarView
+            onOpenAddSession={handleOpenAddSession}
+            onNavigateToActivities={() => setCurrentTab('activities')}
+          />
+        )}
+
+        {currentTab === 'admin-config' && (
+          <AdminConfigView />
         )}
       </main>
 
@@ -312,6 +423,13 @@ const MainAppContent: React.FC = () => {
           onClose={() => setIsUserManagementOpen(false)}
         />
       )}
+
+      {/* Pop-up de Comunicado Condicional tras Splash Screen */}
+      <ConditionalNotificationModal
+        isOpen={isConditionalPopupOpen}
+        onClose={() => setIsConditionalPopupOpen(false)}
+        message={popupMessage}
+      />
 
       {/* Barra de Navegación Inferior Nativa en Móviles */}
       <MobileBottomNav

@@ -445,6 +445,17 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
 
               <button
+                onClick={() => setCurrentTab('calendar')}
+                className={`rounded-lg px-3 py-1.5 transition whitespace-nowrap ${
+                  currentTab === 'calendar'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                📅 Calendario & Notas
+              </button>
+
+              <button
                 onClick={() => setCurrentTab('payments')}
                 className={`rounded-lg px-3 py-1.5 transition whitespace-nowrap ${
                   currentTab === 'payments'
@@ -489,6 +500,17 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
 
               <button
+                onClick={() => setCurrentTab('admin-config')}
+                className={`rounded-lg px-3 py-1.5 transition whitespace-nowrap ${
+                  currentTab === 'admin-config'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                ⚙️ Configuración (app_config)
+              </button>
+
+              <button
                 onClick={() => setCurrentTab('teacher-portal')}
                 className={`rounded-lg px-3 py-1.5 transition whitespace-nowrap ${
                   currentTab === 'teacher-portal'
@@ -527,6 +549,17 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
 
               <button
+                onClick={() => setCurrentTab('calendar')}
+                className={`rounded-lg px-3 py-1.5 transition whitespace-nowrap ${
+                  currentTab === 'calendar'
+                    ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                📅 Calendario & Notas
+              </button>
+
+              <button
                 onClick={() => setCurrentTab('activities')}
                 className={`rounded-lg px-3 py-1.5 transition whitespace-nowrap ${
                   currentTab === 'activities'
@@ -541,16 +574,29 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Pestañas de Alumno */}
           {currentRole === 'student' && (
-            <button
-              onClick={() => setCurrentTab('student-portal')}
-              className={`rounded-lg px-3 py-1.5 transition whitespace-nowrap ${
-                currentTab === 'student-portal'
-                  ? 'bg-emerald-600 text-white shadow-xs font-bold'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
-            >
-              🎒 Mi Portal de Alumno (Mis Clases, Cuotas y Recibos)
-            </button>
+            <>
+              <button
+                onClick={() => setCurrentTab('student-portal')}
+                className={`rounded-lg px-3 py-1.5 transition whitespace-nowrap ${
+                  currentTab === 'student-portal'
+                    ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                🎒 Mi Portal de Alumno (Mis Clases, Cuotas y Recibos)
+              </button>
+
+              <button
+                onClick={() => setCurrentTab('calendar')}
+                className={`rounded-lg px-3 py-1.5 transition whitespace-nowrap ${
+                  currentTab === 'calendar'
+                    ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                📅 Calendario de Clases & Notas
+              </button>
+            </>
           )}
 
           {/* Pestañas de Monitor-Alumno (Híbrido) */}
@@ -576,6 +622,17 @@ export const Header: React.FC<HeaderProps> = ({
                 }`}
               >
                 🎒 Mis Clases como Alumno
+              </button>
+
+              <button
+                onClick={() => setCurrentTab('calendar')}
+                className={`rounded-lg px-3 py-1.5 transition whitespace-nowrap ${
+                  currentTab === 'calendar'
+                    ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                📅 Calendario & Notas
               </button>
 
               <button

@@ -138,3 +138,38 @@ export interface ClassSession {
   topic?: string;
   attendanceRecords?: SessionAttendanceRecord[];
 }
+
+export interface AppConfigSetting {
+  id?: string;
+  config_key: string;
+  config_value: string;
+  is_active: boolean;
+  description?: string;
+  updated_at?: string;
+}
+
+export interface NewsNote {
+  id: string;
+  title: string;
+  content: string;
+  date: string;
+  category: 'noticia' | 'aviso' | 'taller' | 'general';
+  author?: string;
+  pinned?: boolean;
+}
+
+export interface CalendarEventItem {
+  id: string;
+  title: string;
+  startTime: string; // e.g., "10:00"
+  endTime: string;   // e.g., "11:30"
+  date: string;      // "YYYY-MM-DD"
+  teacherName?: string;
+  room?: string;
+  activityName?: string;
+  category?: string;
+  billingMode?: 'monthly' | 'per_class';
+  price?: number;
+  description?: string;
+}
+

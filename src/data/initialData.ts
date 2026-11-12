@@ -1,4 +1,4 @@
-import { Teacher, Activity, Student, PaymentRecord, TeacherPayout, CenterExpense, ClassSession } from '../types';
+import { Teacher, Activity, Student, PaymentRecord, TeacherPayout, CenterExpense, ClassSession, AppConfigSetting, NewsNote } from '../types';
 
 export const INITIAL_TEACHERS: Teacher[] = [
   {
@@ -654,3 +654,67 @@ export const INITIAL_PAYOUTS: TeacherPayout[] = [
     paymentMethod: 'transfer'
   }
 ];
+
+export const INITIAL_APP_CONFIGS: AppConfigSetting[] = [
+  {
+    config_key: 'popup_notification',
+    config_value: '¡Bienvenidos al nuevo ciclo de talleres y actividades en la Asociación Cultural Triskell! Recuerda consultar el calendario y los horarios de clase con tu monitor.',
+    is_active: true,
+    description: 'Aviso emergente mostrado al entrar a la aplicación tras la pantalla de bienvenida'
+  },
+  {
+    config_key: 'google_calendar',
+    config_value: 'triskell_calendario_general@asociacion.es',
+    is_active: true,
+    description: 'Integración y visualización del calendario en vivo con tira semanal de 7 días'
+  },
+  {
+    config_key: 'news_enabled',
+    config_value: 'Tablón de avisos y últimas notas activo para todos los usuarios',
+    is_active: true,
+    description: 'Habilita la sección de últimas notas y comunicados oficiales de la asociación'
+  },
+  {
+    config_key: 'association_name',
+    config_value: 'Asociación Cultural y de Bienestar TRISKELL',
+    is_active: true,
+    description: 'Nombre visible de la entidad y membrete oficial'
+  },
+  {
+    config_key: 'bizum_general',
+    config_value: '+34 612 345 678',
+    is_active: true,
+    description: 'Teléfono oficial para cobros de cuotas y actividades por Bizum'
+  }
+];
+
+export const INITIAL_NEWS_NOTES: NewsNote[] = [
+  {
+    id: 'note-1',
+    title: 'Apertura de inscripciones para el nuevo ciclo de Yoga y Meditación',
+    content: 'Comenzamos nuevo bloque formativo en Sala 1. Los alumnos inscritos pueden abonar sus cuotas directamente en mano con la monitora Elena Morales o vía Bizum oficial.',
+    date: '2026-11-10',
+    category: 'taller',
+    author: 'Coordinación Triskell',
+    pinned: true
+  },
+  {
+    id: 'note-2',
+    title: 'Nueva funcionalidad: Desbloqueo Biométrico y Sesión Segura',
+    content: 'Ahora puedes activar tu Huella o Face ID / Passkey en este dispositivo para entrar a tu portal sin tener que volver a escribir tu usuario y contraseña.',
+    date: '2026-11-09',
+    category: 'aviso',
+    author: 'Administración',
+    pinned: false
+  },
+  {
+    id: 'note-3',
+    title: 'Horario especial de fin de semana y talleres monográficos',
+    content: 'El próximo sábado tendremos el taller intensivo de Cerámica y Escultura creativa en Sala 2. Plazas limitadas a 12 participantes.',
+    date: '2026-11-08',
+    category: 'noticia',
+    author: 'Nuria Garrido',
+    pinned: false
+  }
+];
+

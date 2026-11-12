@@ -9,7 +9,9 @@ import {
   ClassSession,
   UserRole,
   PaymentMethod,
-  AuthUser
+  AuthUser,
+  AppConfigSetting,
+  NewsNote
 } from '../types';
 import {
   supabase,
@@ -33,8 +35,22 @@ import {
   INITIAL_PAYMENTS,
   INITIAL_EXPENSES,
   INITIAL_SESSIONS,
-  INITIAL_PAYOUTS
+  INITIAL_PAYOUTS,
+  INITIAL_APP_CONFIGS,
+  INITIAL_NEWS_NOTES
 } from '../data/initialData';
+import {
+  isBiometricsSupported,
+  getStoredBiometricUser,
+  cacheAuthSession,
+  getCachedAuthSession,
+  clearCachedAuthSession,
+  registerBiometricCredential,
+  authenticateWithBiometrics,
+  disableBiometrics as disableBiometricsUtil,
+  StoredBiometricInfo
+} from '../lib/biometrics';
+
 
 export interface TeacherFinancialSummary {
   teacher: Teacher;
@@ -63,6 +79,7 @@ interface AppContextType {
   setCurrentStudentId: (id: string) => void;
 
   currentUser: AuthUser | null;
+  setCurrentUser: (user: AuthUser | null) => void;
   loginWithGoogle: () => Promise<void>;
   loginWithEmail: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
@@ -156,6 +173,25 @@ interface AppContextType {
   teacherSummaries: TeacherFinancialSummary[];
   totalTeacherCosts: number;
   netMonthlyBalance: number;
+
+  // Configuración Global ('app_config')
+  appConfigs: AppConfigSetting[];
+  updateAppConfig: (config_key: string, config_value: string, is_active: boolean) => Promise<void>;
+  addAppConfig: (config: AppConfigSetting) => Promise<void>;
+  deleteAppConfig: (config_key: string) => Promise<void>;
+
+  // Últimas notas / Comunicados
+  newsNotes: NewsNote[];
+  addNewsNote: (note: Omit<NewsNote, 'id'>) => Promise<void>;
+  deleteNewsNote: (id: string) => Promise<void>;
+
+  // Biometría y Sesión en Caché
+  isBiometricsSupported: boolean;
+  hasBiometricsEnabled: boolean;
+  biometricUser: StoredBiometricInfo | null;
+  enableBiometrics: () => Promise<boolean>;
+  disableBiometrics: () => void;
+  unlockWithBiometrics: () => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -189,6 +225,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [expenses, setExpenses] = useState<CenterExpense[]>([]);
   const [sessions, setSessions] = useState<ClassSession[]>([]);
   const [payouts, setPayouts] = useState<TeacherPayout[]>([]);
+
+  // Configuración Global ('app_config')
+  const [appConfigs, setAppConfigs] = useState<AppConfigSetting[]>(() => {
+    try {
+      const local = localStorage.getItem('triskell_app_configs');
+      return local ? JSON.parse(local) : INITIAL_APP_CONFIGS;
+    } catch {
+      return INITIAL_APP_CONFIGS;
+    }
+  });
+
+  // Últimas notas / Comunicados
+  const [newsNotes, setNewsNotes] = useState<NewsNote[]>(() => {
+    try {
+      const local = localStorage.getItem('triskell_news_notes');
+      return local ? JSON.parse(local) : INITIAL_NEWS_NOTES;
+    } catch {
+      return INITIAL_NEWS_NOTES;
+    }
+  });
+
+  // Biometría
+  const [isBiometricsSupportedState, setIsBiometricsSupportedState] = useState(false);
+  const [biometricUserState, setBiometricUserState] = useState<StoredBiometricInfo | null>(null);
+
+  useEffect(() => {
+    isBiometricsSupported().then(supported => {
+      setIsBiometricsSupportedState(supported);
+      setBiometricUserState(getStoredBiometricUser());
+    });
+  }, []);
 
   const clearDbError = useCallback(() => setDbError(null), []);
 
@@ -326,6 +393,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setPayouts(loadedPayouts);
       }
 
+      // 9. Cargar Configuración Global ('app_config')
+      try {
+        const configRes = await supabase.from('app_config').select('*');
+        if (!configRes.error && configRes.data && configRes.data.length > 0) {
+          const loadedConfigs: AppConfigSetting[] = configRes.data.map((c: any) => ({
+            id: c.id,
+            config_key: c.config_key,
+            config_value: c.config_value,
+            is_active: Boolean(c.is_active),
+            description: c.description,
+            updated_at: c.updated_at
+          }));
+          setAppConfigs(loadedConfigs);
+          localStorage.setItem('triskell_app_configs', JSON.stringify(loadedConfigs));
+        }
+      } catch (e) {
+        console.warn('app_config fetch error:', e);
+      }
+
+      // 10. Cargar Últimas notas / Comunicados
+      try {
+        const notesRes = await supabase.from('news_notes').select('*').order('date', { ascending: false });
+        if (!notesRes.error && notesRes.data && notesRes.data.length > 0) {
+          const loadedNotes: NewsNote[] = notesRes.data.map((n: any) => ({
+            id: n.id,
+            title: n.title,
+            content: n.content,
+            date: n.date,
+            category: n.category || 'general',
+            author: n.author,
+            pinned: Boolean(n.pinned)
+          }));
+          setNewsNotes(loadedNotes);
+          localStorage.setItem('triskell_news_notes', JSON.stringify(loadedNotes));
+        }
+      } catch (e) {
+        console.warn('news_notes fetch error:', e);
+      }
+
+
     } catch (err: any) {
       handleSupabaseError('Sincronización general', err);
     } finally {
@@ -431,6 +538,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (teacherId) setCurrentTeacherId(teacherId);
       if (studentId) setCurrentStudentId(studentId);
 
+      // Guardar en caché local para desbloqueo rápido / biométrico
+      cacheAuthSession({
+        email: emailNormalized,
+        name: fullName,
+        role: role,
+        userId: userId,
+        timestamp: Date.now()
+      });
+
     } catch (e: any) {
       console.error('Error synchronizing user profile:', e);
       handleSupabaseError('Sincronizar perfil de usuario', e);
@@ -447,16 +563,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (session?.user) {
         syncUserProfile(session.user.id, session.user.email, session.user.user_metadata);
       } else {
-        // Cuenta predeterminada de Google para Cristino si aún no hay sesión iniciada
-        setCurrentUser({
-          id: 'demo-admin-cristino',
-          email: 'cristinoconde@gmail.com',
-          name: 'Cristino Conde',
-          photoURL: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
-          role: 'admin',
-          provider: 'google',
-          lastLogin: new Date().toISOString()
-        });
+        // Verificar si hay sesión recordada en caché o biometría
+        const cached = getCachedAuthSession();
+        const storedBio = getStoredBiometricUser();
+
+        // Si hay sesión recordada y NO tiene biometría obligatoria, restaurar
+        if (cached && !storedBio) {
+          setCurrentUser({
+            id: cached.userId || 'cached-usr',
+            email: cached.email,
+            name: cached.name,
+            role: (cached.role as UserRole) || 'student',
+            provider: 'email',
+            lastLogin: new Date(cached.timestamp).toISOString()
+          });
+          setCurrentRoleState((cached.role as UserRole) || 'student');
+        }
       }
     });
 
@@ -467,6 +589,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         setCurrentUser(null);
       }
+
     });
 
     return () => {
@@ -569,12 +692,159 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Cierre de sesión en Supabase
   const logout = async () => {
     try {
+      clearCachedAuthSession();
       await supabase.auth.signOut();
       setCurrentUser(null);
     } catch (e) {
       console.error('Error logging out:', e);
     }
   };
+
+  // Configuración Global ('app_config')
+  const updateAppConfig = async (config_key: string, config_value: string, is_active: boolean) => {
+    setAppConfigs(prev => {
+      const updated = prev.map(c =>
+        c.config_key === config_key
+          ? { ...c, config_value, is_active, updated_at: new Date().toISOString() }
+          : c
+      );
+      localStorage.setItem('triskell_app_configs', JSON.stringify(updated));
+      return updated;
+    });
+
+    try {
+      const { error } = await supabase.from('app_config').upsert({
+        config_key,
+        config_value,
+        is_active,
+        updated_at: new Date().toISOString()
+      });
+      if (error) {
+        console.warn('Could not persist to Supabase app_config:', error.message);
+      }
+    } catch (e) {
+      console.warn('app_config persistence error:', e);
+    }
+  };
+
+  const addAppConfig = async (config: AppConfigSetting) => {
+    setAppConfigs(prev => {
+      const filtered = prev.filter(c => c.config_key !== config.config_key);
+      const updated = [...filtered, { ...config, updated_at: new Date().toISOString() }];
+      localStorage.setItem('triskell_app_configs', JSON.stringify(updated));
+      return updated;
+    });
+
+    try {
+      await supabase.from('app_config').upsert({
+        config_key: config.config_key,
+        config_value: config.config_value,
+        is_active: config.is_active,
+        description: config.description,
+        updated_at: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn('app_config upsert error:', e);
+    }
+  };
+
+  const deleteAppConfig = async (config_key: string) => {
+    setAppConfigs(prev => {
+      const updated = prev.filter(c => c.config_key !== config_key);
+      localStorage.setItem('triskell_app_configs', JSON.stringify(updated));
+      return updated;
+    });
+
+    try {
+      await supabase.from('app_config').delete().eq('config_key', config_key);
+    } catch (e) {
+      console.warn('app_config delete error:', e);
+    }
+  };
+
+  // Últimas notas / Comunicados
+  const addNewsNote = async (note: Omit<NewsNote, 'id'>) => {
+    const newNote: NewsNote = {
+      ...note,
+      id: `note-${Date.now()}`
+    };
+    setNewsNotes(prev => {
+      const updated = [newNote, ...prev];
+      localStorage.setItem('triskell_news_notes', JSON.stringify(updated));
+      return updated;
+    });
+
+    try {
+      await supabase.from('news_notes').insert([newNote]);
+    } catch (e) {
+      console.warn('news_notes insert error:', e);
+    }
+  };
+
+  const deleteNewsNote = async (id: string) => {
+    setNewsNotes(prev => {
+      const updated = prev.filter(n => n.id !== id);
+      localStorage.setItem('triskell_news_notes', JSON.stringify(updated));
+      return updated;
+    });
+
+    try {
+      await supabase.from('news_notes').delete().eq('id', id);
+    } catch (e) {
+      console.warn('news_notes delete error:', e);
+    }
+  };
+
+  // Biometría
+  const enableBiometrics = async (): Promise<boolean> => {
+    if (!currentUser) throw new Error('Debes haber iniciado sesión para activar biometría.');
+    const ok = await registerBiometricCredential(
+      currentUser.id,
+      currentUser.email,
+      currentUser.name,
+      currentUser.role
+    );
+    if (ok) {
+      setBiometricUserState(getStoredBiometricUser());
+    }
+    return ok;
+  };
+
+  const disableBiometrics = () => {
+    disableBiometricsUtil();
+    setBiometricUserState(null);
+  };
+
+  const unlockWithBiometrics = async (): Promise<boolean> => {
+    try {
+      const user = await authenticateWithBiometrics();
+      if (user) {
+        const authUserObj: AuthUser = {
+          id: user.credentialId,
+          email: user.email,
+          name: user.name,
+          role: (user.role as UserRole) || 'student',
+          lastLogin: new Date().toISOString()
+        };
+        setCurrentUser(authUserObj);
+        setCurrentRoleState((user.role as UserRole) || 'student');
+
+        cacheAuthSession({
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          userId: user.credentialId,
+          timestamp: Date.now()
+        });
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Error unlocking with biometrics:', err);
+      throw err;
+    }
+  };
+
 
   // ==============================================================================
   // GESTIÓN EXCLUSIVA DE USUARIOS POR EL COORDINADOR (auth.users + profiles)
@@ -1390,6 +1660,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentStudentId,
         setCurrentStudentId,
         currentUser,
+        setCurrentUser,
         loginWithGoogle,
         loginWithEmail,
         logout,
@@ -1442,7 +1713,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         totalExpenses,
         teacherSummaries,
         totalTeacherCosts,
-        netMonthlyBalance
+        netMonthlyBalance,
+        appConfigs,
+        updateAppConfig,
+        addAppConfig,
+        deleteAppConfig,
+        newsNotes,
+        addNewsNote,
+        deleteNewsNote,
+        isBiometricsSupported: isBiometricsSupportedState,
+        hasBiometricsEnabled: Boolean(biometricUserState),
+        biometricUser: biometricUserState,
+        enableBiometrics,
+        disableBiometrics,
+        unlockWithBiometrics
       }}
     >
       {children}
