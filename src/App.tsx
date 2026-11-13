@@ -12,6 +12,8 @@ import { CalendarView } from './components/CalendarView';
 import { AdminConfigView } from './components/AdminConfigView';
 import { SplashScreen } from './components/SplashScreen';
 import { SignInScreen } from './components/SignInScreen';
+import { LandingPage } from './components/LandingPage';
+import { PrivacyPolicyPage, TermsOfServicePage } from './components/LegalPages';
 import { ConditionalNotificationModal } from './components/ConditionalNotificationModal';
 import { RecordPaymentModal } from './components/RecordPaymentModal';
 import { RecordTeacherPayoutModal } from './components/RecordTeacherPayoutModal';
@@ -72,7 +74,34 @@ const MainAppContent: React.FC = () => {
   const [isEnrollStudentOpen, setIsEnrollStudentOpen] = useState(false);
   const [enrollActivityId, setEnrollActivityId] = useState<string | undefined>(undefined);
 
-  // Estado para la Splash Screen
+  // Enrutamiento público por pathname (/ , /privacidad , /condiciones , /login)
+  const normalizePath = (raw: string) => {
+    if (!raw || raw === '/') return '/';
+    return raw.endsWith('/') ? raw.slice(0, -1) : raw;
+  };
+
+  const [currentPath, setCurrentPath] = useState<string>(() =>
+    normalizePath(window.location.pathname)
+  );
+
+  useEffect(() => {
+    const onPopState = () => {
+      setCurrentPath(normalizePath(window.location.pathname));
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  const navigateTo = (path: string) => {
+    const normalized = normalizePath(path);
+    if (normalizePath(window.location.pathname) !== normalized) {
+      window.history.pushState({}, '', normalized);
+    }
+    setCurrentPath(normalized);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Estado para la Splash Screen (solo cuando hay sesión activa)
   const [showSplash, setShowSplash] = useState(true);
 
   // Estado para el Comunicado Emergente condicional (app_config.popup_notification)
@@ -181,14 +210,47 @@ const MainAppContent: React.FC = () => {
     setIsAddSessionOpen(true);
   };
 
-  // Renderizar Splash Screen mientras se inicia
-  if (showSplash) {
-    return <SplashScreen onFinish={handleSplashFinish} />;
+  // Rutas legales públicas accesibles siempre sin autenticación ni splash screen
+  if (currentPath === '/privacidad') {
+    return (
+      <PrivacyPolicyPage
+        onNavigate={navigateTo}
+        onSignIn={() => navigateTo(currentUser ? '/' : '/login')}
+      />
+    );
   }
 
-  // Si no hay usuario autenticado ni credencial activa, mostrar pantalla de inicio de sesión
+  if (currentPath === '/condiciones') {
+    return (
+      <TermsOfServicePage
+        onNavigate={navigateTo}
+        onSignIn={() => navigateTo(currentUser ? '/' : '/login')}
+      />
+    );
+  }
+
+  // Si no hay usuario autenticado: servir Landing Pública en / o SignInScreen en /login
   if (!currentUser) {
-    return <SignInScreen />;
+    if (currentPath === '/login') {
+      return (
+        <SignInScreen
+          onNavigate={navigateTo}
+          onSuccess={() => navigateTo('/')}
+        />
+      );
+    }
+
+    return (
+      <LandingPage
+        onNavigate={navigateTo}
+        onSignIn={() => navigateTo('/login')}
+      />
+    );
+  }
+
+  // Renderizar Splash Screen al iniciar sesión autenticada
+  if (showSplash) {
+    return <SplashScreen onFinish={handleSplashFinish} />;
   }
 
   return (
@@ -316,6 +378,29 @@ const MainAppContent: React.FC = () => {
         <p className="text-[11px] text-slate-400">
           Diseñado para centros de actividades, academias y asociaciones. Cálculos automáticos y exportación de datos.
         </p>
+        <div className="mt-2 flex items-center justify-center gap-4 text-[11px] text-slate-500 dark:text-slate-400">
+          <a
+            href="/privacidad"
+            onClick={(e) => {
+              e.preventDefault();
+              navigateTo('/privacidad');
+            }}
+            className="hover:text-slate-900 dark:hover:text-white underline underline-offset-4"
+          >
+            Política de Privacidad
+          </a>
+          <span aria-hidden="true">·</span>
+          <a
+            href="/condiciones"
+            onClick={(e) => {
+              e.preventDefault();
+              navigateTo('/condiciones');
+            }}
+            className="hover:text-slate-900 dark:hover:text-white underline underline-offset-4"
+          >
+            Condiciones del Servicio
+          </a>
+        </div>
       </footer>
 
       {/* Modales */}
