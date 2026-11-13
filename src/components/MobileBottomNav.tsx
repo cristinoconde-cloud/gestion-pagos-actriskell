@@ -9,7 +9,8 @@ import {
   Plus,
   BookOpen,
   Calendar,
-  DollarSign
+  DollarSign,
+  Users
 } from 'lucide-react';
 
 interface MobileBottomNavProps {
@@ -23,9 +24,12 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   setCurrentTab,
   onOpenRecordPayment
 }) => {
-  const { periodPayments, currentRole, currentUser } = useApp();
+  const { periodPayments, currentRole, currentUser, students } = useApp();
 
   const pendingCount = periodPayments.filter(p => p.status === 'pending' || p.status === 'overdue').length;
+  const pendingValidationCount = students.filter(
+    s => s.status === 'pending_validation' || s.validationStatus === 'pending'
+  ).length;
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 md:hidden border-t border-slate-200/90 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg pb-[env(safe-area-inset-bottom)] shadow-lg no-print">
@@ -78,10 +82,28 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <CreditCard className="h-5 w-5" />
-              <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">Cuotas</span>
+              <span className="text-[9.5px] mt-1 tracking-tight whitespace-nowrap">Cuotas</span>
               {pendingCount > 0 && (
-                <span className="absolute top-1 right-2 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-black text-white shadow-xs">
+                <span className="absolute top-1 right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-black text-white shadow-xs">
                   {pendingCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setCurrentTab('admin-users')}
+              title="Usuarios y Socios"
+              className={`relative flex flex-col items-center justify-center flex-1 py-1 transition-colors min-h-[44px] ${
+                currentTab === 'admin-users'
+                  ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+                  : 'text-slate-500 dark:text-slate-400'
+              }`}
+            >
+              <Users className="h-5 w-5" />
+              <span className="text-[9.5px] mt-1 tracking-tight whitespace-nowrap">Usuarios</span>
+              {pendingValidationCount > 0 && (
+                <span className="absolute top-1 right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-black text-white shadow-xs">
+                  {pendingValidationCount}
                 </span>
               )}
             </button>

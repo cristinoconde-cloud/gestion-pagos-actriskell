@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { Student } from '../types';
+import { Student, StudentStatus } from '../types';
 import { X, Check } from 'lucide-react';
 
 interface AddStudentModalProps {
@@ -15,8 +15,8 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({ isOpen, onClos
   const [name, setName] = useState(studentToEdit?.name || '');
   const [email, setEmail] = useState(studentToEdit?.email || '');
   const [phone, setPhone] = useState(studentToEdit?.phone || '');
+  const [status, setStatus] = useState<StudentStatus>(studentToEdit?.status || 'active');
   const [notes, setNotes] = useState(studentToEdit?.notes || '');
-  // ✅ AHORA (Empieza completamente vacío sin asignar talleres por sorpresa):
   const [selectedActivityIds, setSelectedActivityIds] = useState<string[]>(
     studentToEdit?.activities.map(a => a.activityId) || []
   );
@@ -26,6 +26,22 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({ isOpen, onClos
       return acc;
     }, {} as Record<string, number>) || {}
   );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setName(studentToEdit?.name || '');
+    setEmail(studentToEdit?.email || '');
+    setPhone(studentToEdit?.phone || '');
+    setStatus(studentToEdit?.status || 'active');
+    setNotes(studentToEdit?.notes || '');
+    setSelectedActivityIds(studentToEdit?.activities.map(a => a.activityId) || []);
+    setCustomPrices(
+      studentToEdit?.activities?.reduce((acc, a) => {
+        if (a.customPrice !== undefined) acc[a.activityId] = a.customPrice;
+        return acc;
+      }, {} as Record<string, number>) || {}
+    );
+  }, [isOpen, studentToEdit]);
 
   if (!isOpen) return null;
 
@@ -39,29 +55,35 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({ isOpen, onClos
     e.preventDefault();
     if (!name.trim()) return;
 
-    const enrolledList = selectedActivityIds.map(actId => ({
-      activityId: actId,
-      customPrice: customPrices[actId] !== undefined ? Number(customPrices[actId]) : undefined,
-      enrolledSince: new Date().toISOString().split('T')[0],
-      billingMode: 'monthly' as const
-    }));
+    const todayStr = new Date().toISOString().split('T')[0];
+    const enrolledList = selectedActivityIds.map(actId => {
+      const existing = studentToEdit?.activities.find(a => a.activityId === actId);
+      const activityInfo = activities.find(a => a.id === actId);
+      return {
+        activityId: actId,
+        customPrice: customPrices[actId] !== undefined ? Number(customPrices[actId]) : undefined,
+        enrolledSince: existing?.enrolledSince || todayStr,
+        billingMode: existing?.billingMode || activityInfo?.billingMode || ('monthly' as const)
+      };
+    });
 
     if (studentToEdit) {
       updateStudent(studentToEdit.id, {
-        name,
-        email,
-        phone,
-        notes,
+        name: name.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        status,
+        notes: notes.trim(),
         activities: enrolledList
       });
     } else {
       addStudent({
-        name,
-        email,
-        phone,
-        status: 'active',
+        name: name.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        status,
         activities: enrolledList,
-        notes
+        notes: notes.trim()
       });
     }
 
@@ -134,6 +156,22 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({ isOpen, onClos
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Estado del Socio / Alumno
+              </label>
+              <select
+                value={status}
+                onChange={e => setStatus(e.target.value as StudentStatus)}
+                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500 font-semibold"
+              >
+                <option value="active">Activo / Socio confirmado</option>
+                <option value="trial">En prueba</option>
+                <option value="pending_validation">Pendiente de validación</option>
+                <option value="inactive">Baja / Inactivo</option>
+              </select>
             </div>
 
             {/* Actividades inscritas */}

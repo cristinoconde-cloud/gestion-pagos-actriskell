@@ -43,7 +43,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
         {/* Logo Triskel Céltico con brillo y animación */}
         <div className="relative mb-6">
           <div className="absolute -inset-4 rounded-3xl bg-gradient-to-r from-emerald-500 to-teal-400 opacity-40 blur-xl animate-pulse" />
-          <div className="relative flex h-28 w-28 items-center justify-center rounded-3xl bg-gradient-to-br from-emerald-500 via-emerald-600 to-emerald-800 text-white shadow-2xl shadow-emerald-500/40 border border-emerald-400/30">
+          <div className="relative flex h-50 w-50 items-center justify-center rounded-3xl bg-gradient-to-br from-emerald-500 via-emerald-600 to-emerald-800 text-white shadow-2xl shadow-emerald-500/40 border border-emerald-400/30">
             {/* Imagen del logo con la animación de giro continuo */}
             <img 
               src="/logo.png" 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Teacher, TeacherPaymentScheme, PaymentMethod } from '../types';
 import { X, Check } from 'lucide-react';
@@ -24,8 +24,28 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
   const [preferredPaymentMethod, setPreferredPaymentMethod] = useState<PaymentMethod>(
     teacherToEdit?.preferredPaymentMethod || 'transfer'
   );
+  const [collectionType, setCollectionType] = useState<'personal' | 'association'>(
+    teacherToEdit?.collectionType || 'personal'
+  );
   const [bankAccount, setBankAccount] = useState(teacherToEdit?.bankAccount || '');
+  const [active, setActive] = useState<boolean>(teacherToEdit?.active ?? true);
   const [notes, setNotes] = useState(teacherToEdit?.notes || '');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setName(teacherToEdit?.name || '');
+    setEmail(teacherToEdit?.email || '');
+    setPhone(teacherToEdit?.phone || '');
+    setPaymentScheme(teacherToEdit?.paymentScheme || 'per_class');
+    setRatePerClass(teacherToEdit?.ratePerClass ?? 30);
+    setFixedMonthlyRate(teacherToEdit?.fixedMonthlyRate ?? 400);
+    setRevenueSharePercent(teacherToEdit?.revenueSharePercent ?? 60);
+    setPreferredPaymentMethod(teacherToEdit?.preferredPaymentMethod || 'transfer');
+    setCollectionType(teacherToEdit?.collectionType || 'personal');
+    setBankAccount(teacherToEdit?.bankAccount || '');
+    setActive(teacherToEdit?.active ?? true);
+    setNotes(teacherToEdit?.notes || '');
+  }, [isOpen, teacherToEdit]);
 
   if (!isOpen) return null;
 
@@ -35,30 +55,33 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
 
     if (teacherToEdit) {
       updateTeacher(teacherToEdit.id, {
-        name,
-        email,
-        phone,
+        name: name.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
         paymentScheme,
         ratePerClass: Number(ratePerClass),
         fixedMonthlyRate: Number(fixedMonthlyRate),
         revenueSharePercent: Number(revenueSharePercent),
         preferredPaymentMethod,
-        bankAccount,
-        notes
+        collectionType,
+        bankAccount: bankAccount.trim(),
+        active,
+        notes: notes.trim()
       });
     } else {
       addTeacher({
-        name,
-        email,
-        phone,
+        name: name.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
         paymentScheme,
         ratePerClass: Number(ratePerClass),
         fixedMonthlyRate: Number(fixedMonthlyRate),
         revenueSharePercent: Number(revenueSharePercent),
         preferredPaymentMethod,
-        bankAccount,
-        active: true,
-        notes
+        collectionType,
+        bankAccount: bankAccount.trim(),
+        active,
+        notes: notes.trim()
       });
     }
 
@@ -239,6 +262,35 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
                   onChange={e => setBankAccount(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-mono text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
                 />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Modalidad de cobro por defecto
+                </label>
+                <select
+                  value={collectionType}
+                  onChange={e => setCollectionType(e.target.value as 'personal' | 'association')}
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
+                >
+                  <option value="personal">Personal (Cobra el monitor)</option>
+                  <option value="association">Asociación (Cobra el centro)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Estado en el centro
+                </label>
+                <select
+                  value={active ? 'active' : 'inactive'}
+                  onChange={e => setActive(e.target.value === 'active')}
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500 font-semibold"
+                >
+                  <option value="active">Activo (En ejercicio)</option>
+                  <option value="inactive">De baja / Inactivo</option>
+                </select>
               </div>
             </div>
 

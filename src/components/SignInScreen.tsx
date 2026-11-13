@@ -380,7 +380,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-              <div className="flex justify-end mt-1">
+              <div className="flex mt-1">
                 <button
                   type="button"
                   onClick={() => {
@@ -388,7 +388,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
                     setErrorMessage(null);
                     setResetMessage(null);
                   }}
-                  className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
+                  className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline ml-auto"
                 >
                   ¿Cambiar o recuperar contraseña?
                 </button>
@@ -420,35 +420,6 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
             )}
           </form>
         )}
-        {/* Acceso Rápido Demo (Ambiente AI Studio) */}
-        <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 text-center">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2.5">
-            Acceso Rápido para Pruebas
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => handleDemoLogin('admin')}
-              className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 p-2 text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-500/40 transition active:scale-95"
-            >
-              👑 Coordinador
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDemoLogin('teacher')}
-              className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 p-2 text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 hover:border-indigo-500/40 transition active:scale-95"
-            >
-              🎓 Monitor
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDemoLogin('student')}
-              className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 p-2 text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:bg-teal-50 dark:hover:bg-teal-950/30 hover:border-teal-500/40 transition active:scale-95"
-            >
-              🎒 Alumno
-            </button>
-          </div>
-        </div>
         {/* Enlaces Legales obligatorios para Google OAuth */}
         <footer className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-center gap-4 text-[11px] text-slate-500 dark:text-slate-400">
           <a

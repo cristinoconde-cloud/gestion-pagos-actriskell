@@ -114,6 +114,15 @@ interface AppContextType {
     createStudentProfile?: boolean;
   }) => Promise<{ success: boolean; error?: string; tempPassword?: string }>;
   updateUserRole: (userId: string, newRole: UserRole) => Promise<void>;
+  updateUserProfileByAdmin: (
+    userId: string,
+    updates: {
+      name?: string;
+      role?: UserRole;
+      teacherId?: string | null;
+      studentId?: string | null;
+    }
+  ) => Promise<{ success: boolean; error?: string }>;
   deleteUserAccess: (userId: string) => Promise<void>;
 
   teachers: Teacher[];
@@ -1134,6 +1143,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const updateUserProfileByAdmin: AppContextType['updateUserProfileByAdmin'] = async (
+    userId,
+    updates
+  ) => {
+    clearDbError();
+    try {
+      const dbUpdates: Record<string, any> = {};
+      if (updates.name !== undefined) dbUpdates.full_name = updates.name.trim();
+      if (updates.role !== undefined) dbUpdates.role = updates.role;
+      if (updates.teacherId !== undefined) dbUpdates.teacher_id = updates.teacherId || null;
+      if (updates.studentId !== undefined) dbUpdates.student_id = updates.studentId || null;
+
+      if (Object.keys(dbUpdates).length === 0) return { success: true };
+
+      const { error } = await supabase
+        .from('profiles')
+        .update(dbUpdates)
+        .eq('id', userId);
+
+      if (error) {
+        handleSupabaseError('Actualizar usuario', error);
+        return { success: false, error: error.message };
+      }
+
+      setProfiles(prev =>
+        prev.map(p =>
+          p.id === userId
+            ? {
+                ...p,
+                ...(updates.name !== undefined ? { name: updates.name.trim() } : {}),
+                ...(updates.role !== undefined ? { role: updates.role } : {}),
+                ...(updates.teacherId !== undefined
+                  ? { teacherId: updates.teacherId || undefined }
+                  : {}),
+                ...(updates.studentId !== undefined
+                  ? { studentId: updates.studentId || undefined }
+                  : {})
+              }
+            : p
+        )
+      );
+      return { success: true };
+    } catch (e: any) {
+      const msg = e?.message || 'Error al actualizar usuario';
+      handleSupabaseError('Actualizar usuario', e);
+      return { success: false, error: msg };
+    }
+  };
+
   const deleteUserAccess = async (userId: string) => {
     clearDbError();
     try {
@@ -1306,11 +1364,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (updates.name !== undefined) studentDb.name = updates.name;
     if (updates.email !== undefined) studentDb.email = updates.email || null;
     if (updates.phone !== undefined) studentDb.phone = updates.phone || null;
-    if (updates.status !== undefined) studentDb.status = updates.status;
+    if (updates.status !== undefined) {
+      studentDb.status = updates.status;
+      if (updates.status === 'pending_validation') {
+        studentDb.validation_status = 'pending';
+      } else if (updates.status === 'active' || updates.status === 'trial') {
+        studentDb.validation_status = 'validated';
+      }
+    }
     if (updates.notes !== undefined) studentDb.notes = updates.notes || null;
 
     if (Object.keys(studentDb).length > 0) {
-      const { error } = await supabase.from('students').update(studentDb).eq('id', id);
+      let { error } = await supabase.from('students').update(studentDb).eq('id', id);
+      if (
+        error &&
+        studentDb.validation_status !== undefined &&
+        (error.code === '42703' || error.message?.includes('column'))
+      ) {
+        const { validation_status: _ignored, ...fallbackDb } = studentDb;
+        const fallbackRes = await supabase.from('students').update(fallbackDb).eq('id', id);
+        error = fallbackRes.error;
+      }
       if (error) {
         handleSupabaseError('Actualizar alumno', error);
         return;
@@ -2155,6 +2229,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         profiles,
         createUserByAdmin,
         updateUserRole,
+        updateUserProfileByAdmin,
         deleteUserAccess,
         teachers,
         activities,

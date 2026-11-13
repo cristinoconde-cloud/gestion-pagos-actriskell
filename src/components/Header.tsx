@@ -21,7 +21,8 @@ import {
   Settings,
   BookOpen,
   DollarSign,
-  User
+  User,
+  Users
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -58,6 +59,7 @@ export const Header: React.FC<HeaderProps> = ({
     currentTeacherId,
     setCurrentTeacherId,
     currentUser,
+    students,
     setIsAuthModalOpen,
     isDarkMode,
     toggleDarkMode,
@@ -65,6 +67,10 @@ export const Header: React.FC<HeaderProps> = ({
     resetToInitialData,
     isLoadingDb
   } = useApp();
+
+  const pendingValidationCount = students.filter(
+    s => s.status === 'pending_validation' || s.validationStatus === 'pending'
+  ).length;
 
   const [showNewMenu, setShowNewMenu] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -460,16 +466,17 @@ export const Header: React.FC<HeaderProps> = ({
           {currentRole === 'admin' && (
             <>
               {[
-                { id: 'dashboard', label: 'Portal del Administrador', icon: LayoutDashboard },
-                { id: 'calendar', label: 'Calendario', icon: Calendar },
-                { id: 'payments', label: 'Cuotas y Cobros', icon: CreditCard },
-                { id: 'teachers', label: 'Monitores', icon: GraduationCap },
-                { id: 'activities', label: 'Clases/Taller', icon: Sparkles },
-                { id: 'expenses', label: 'Gastos', icon: Receipt },
-                { id: 'admin-config', label: 'Configuración', icon: Settings },
-                { id: 'teacher-portal', label: 'Portal Monitor', icon: Building },
-                { id: 'student-portal', label: 'Portal Alumno', icon: BookOpen },
-                { id: 'profile', label: 'Perfil', icon: User }
+                { id: 'dashboard', label: 'Portal del Administrador', icon: LayoutDashboard, badge: 0 },
+                { id: 'admin-users', label: 'Usuarios y Socios', icon: Users, badge: pendingValidationCount },
+                { id: 'calendar', label: 'Calendario', icon: Calendar, badge: 0 },
+                { id: 'payments', label: 'Cuotas y Cobros', icon: CreditCard, badge: 0 },
+                { id: 'teachers', label: 'Monitores', icon: GraduationCap, badge: 0 },
+                { id: 'activities', label: 'Clases/Taller', icon: Sparkles, badge: 0 },
+                { id: 'expenses', label: 'Gastos', icon: Receipt, badge: 0 },
+                { id: 'admin-config', label: 'Configuración', icon: Settings, badge: 0 },
+                { id: 'teacher-portal', label: 'Portal Monitor', icon: Building, badge: 0 },
+                { id: 'student-portal', label: 'Portal Alumno', icon: BookOpen, badge: 0 },
+                { id: 'profile', label: 'Perfil', icon: User, badge: 0 }
               ].map(tab => {
                 const Icon = tab.icon;
                 const isActive = currentTab === tab.id;
@@ -486,6 +493,15 @@ export const Header: React.FC<HeaderProps> = ({
                   >
                     <Icon className="h-3.5 w-3.5 shrink-0" />
                     <span>{tab.label}</span>
+                    {tab.badge > 0 && (
+                      <span
+                        className={`rounded-full px-1.5 py-0.2 text-[10px] font-black ${
+                          isActive ? 'bg-white text-emerald-700' : 'bg-amber-500 text-white'
+                        }`}
+                      >
+                        {tab.badge}
+                      </span>
+                    )}
                   </button>
                 );
               })}

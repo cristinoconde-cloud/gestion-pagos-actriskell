@@ -12,6 +12,7 @@ import { StudentPortalView } from './components/StudentPortalView';
 import { ProfileView } from './components/ProfileView';
 import { CalendarView } from './components/CalendarView';
 import { AdminConfigView } from './components/AdminConfigView';
+import { AdminUsersView } from './components/AdminUsersView';
 import { SplashScreen } from './components/SplashScreen';
 import { SignInScreen } from './components/SignInScreen';
 import { LandingPage } from './components/LandingPage';
@@ -136,7 +137,7 @@ const MainAppContent: React.FC = () => {
   const availableTabsForRole = useMemo(() => {
     switch (currentRole) {
       case 'admin':
-        return ['dashboard', 'calendar', 'payments', 'teachers', 'activities', 'expenses', 'admin-config', 'teacher-portal', 'student-portal', 'profile'];
+        return ['dashboard', 'admin-users', 'calendar', 'payments', 'teachers', 'activities', 'expenses', 'admin-config', 'teacher-portal', 'student-portal', 'profile'];
       case 'teacher':
         return ['teacher-portal', 'calendar', 'activities', 'teacher-payouts', 'profile'];
       case 'student':
@@ -403,6 +404,17 @@ const MainAppContent: React.FC = () => {
 
         {currentTab === 'admin-config' && availableTabsForRole.includes('admin-config') && (
           <AdminConfigView />
+        )}
+
+        {currentTab === 'admin-users' && availableTabsForRole.includes('admin-users') && (
+          <AdminUsersView
+            onOpenAddStudent={handleOpenAddStudent}
+            onOpenAddTeacher={handleOpenAddTeacher}
+            onOpenEnrollStudent={(activityId?: string) => {
+              setEnrollActivityId(activityId);
+              setIsEnrollStudentOpen(true);
+            }}
+          />
         )}
 
         {currentTab === 'profile' && availableTabsForRole.includes('profile') && (

@@ -64,28 +64,58 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
     setTimeout(() => setCopiedBizum(false), 2000);
   };
 
+  const getActivityPaymentBadge = (activityId: string) => {
+    const actPayments = myPeriodPayments.filter(p => p.activityId === activityId);
+    if (actPayments.some(p => p.status === 'paid')) {
+      return {
+        label: 'Pagado',
+        className: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
+        icon: 'paid' as const
+      };
+    }
+    if (actPayments.some(p => p.status === 'overdue')) {
+      return {
+        label: 'Vencido',
+        className: 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30',
+        icon: 'alert' as const
+      };
+    }
+    if (actPayments.some(p => p.status === 'pending')) {
+      return {
+        label: 'Pendiente',
+        className: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
+        icon: 'clock' as const
+      };
+    }
+    return {
+      label: 'Sin cuota',
+      className: 'bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300/60 dark:border-slate-700',
+      icon: 'none' as const
+    };
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Banner de Bienvenida del Alumno */}
-      <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-r from-emerald-950/20 via-slate-900/40 to-emerald-900/10 p-5 shadow-xs backdrop-blur-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-r from-emerald-950/20 via-slate-900/40 to-emerald-900/10 p-3.5 sm:p-5 shadow-xs backdrop-blur-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
           <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 font-extrabold text-xl shadow-xs">
+            <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 font-extrabold text-lg sm:text-xl shadow-xs shrink-0">
               {currentStudent?.name.charAt(0) || 'A'}
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">
-                  Portal del Alumno / Socio
+                  Portal del Alumno
                 </span>
                 <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                  {enrolledActivities.length} {enrolledActivities.length === 1 ? 'taller activo' : 'talleres activos'}
+                  {enrolledActivities.length} {enrolledActivities.length === 1 ? 'taller' : 'talleres'}
                 </span>
               </div>
-              <h2 className="text-lg font-black text-slate-900 dark:text-white">
+              <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white truncate">
                 Hola, {currentStudent?.name}
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400">
                 Consulta tus clases, horarios de asistencia y detalles de tus talleres
               </p>
             </div>
@@ -111,29 +141,91 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
         </div>
       </div>
 
-      {/* SECCIÓN 1: Tus Actividades & Horarios de Asistencia (Prioritaria con foto del monitor e importe oculto por privacidad) */}
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs space-y-4">
+      {/* SECCIÓN 1: Tus Actividades & Horarios de Asistencia */}
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 sm:p-5 shadow-xs space-y-3 sm:space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-2 border-b border-slate-100 dark:border-slate-800">
           <div>
             <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-              Tus Actividades & Horarios de Asistencia
+              <Sparkles className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span>Tus Actividades</span>
+              <span className="hidden sm:inline">&amp; Horarios de Asistencia</span>
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400">
               Talleres y actividades formativas en los que participas en Triskell
             </p>
           </div>
-          <span className="text-[11px] text-slate-400 font-medium">
+          <span className="hidden sm:inline text-[11px] text-slate-400 font-medium">
             Pulsa en "Datos actividad" para ver cuotas y Bizum
           </span>
         </div>
 
         {enrolledActivities.length === 0 ? (
-          <div className="py-8 text-center text-xs text-slate-400">
+          <div className="py-6 sm:py-8 text-center text-xs text-slate-400">
             No estás matriculado en ninguna actividad formativa actualmente.
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <>
+            {/* Vista Móvil Simplificada (2 líneas por actividad) */}
+            <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800 -mx-1">
+              {enrolledActivities.map(act => {
+                const teacher = teachers.find(t => t.id === act.teacherId);
+                const paymentBadge = getActivityPaymentBadge(act.id);
+                const scheduleSummary = act.schedule.length > 0 ? act.schedule.join(', ') : 'Sin horario';
+
+                return (
+                  <div key={act.id} className="py-3 px-1 space-y-1.5">
+                    {/* Línea 1: Actividad - Profesor y botón Info */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1 text-xs leading-snug truncate">
+                        <span className="font-extrabold text-slate-900 dark:text-white">
+                          {act.name}
+                        </span>
+                        <span className="mx-1.5 text-slate-400">-</span>
+                        <span className="font-medium text-slate-600 dark:text-slate-300">
+                          {teacher?.name || 'Sin monitor'}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setSelectedActivityForModal(act)}
+                        title="Datos actividad"
+                        aria-label={`Ver información de ${act.name}`}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-600 hover:text-white transition shrink-0 active:scale-95"
+                      >
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    {/* Línea 2: Ubicación - Horario y estado de pago */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1 flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                        <MapPin className="h-3 w-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <span className="truncate">
+                          <strong className="font-semibold text-slate-700 dark:text-slate-300">
+                            {act.room || 'Sin sala'}
+                          </strong>
+                          <span className="mx-1 text-slate-400">-</span>
+                          <span>{scheduleSummary}</span>
+                        </span>
+                      </div>
+
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold shrink-0 whitespace-nowrap ${paymentBadge.className}`}
+                      >
+                        {paymentBadge.icon === 'paid' && <CheckCircle2 className="h-3 w-3" />}
+                        {paymentBadge.icon === 'alert' && <AlertCircle className="h-3 w-3" />}
+                        {paymentBadge.icon === 'clock' && <Clock className="h-3 w-3" />}
+                        <span>{paymentBadge.label}</span>
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Vista Escritorio Completa */}
+            <div className="hidden md:grid grid-cols-2 gap-4">
             {enrolledActivities.map(act => {
               const teacher = teachers.find(t => t.id === act.teacherId);
               return (
@@ -227,6 +319,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
               );
             })}
           </div>
+          </>
         )}
       </div>
 
@@ -234,7 +327,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
         <button
           onClick={() => setIsCuotasOpen(!isCuotasOpen)}
-          className="w-full p-5 text-left flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
+          className="w-full p-3.5 sm:p-5 text-left flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
         >
           <div className="flex items-center gap-3">
             <div className="h-9 w-9 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
@@ -377,7 +470,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
         <button
           onClick={() => setIsHistoryOpen(!isHistoryOpen)}
-          className="w-full p-5 text-left flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
+          className="w-full p-3.5 sm:p-5 text-left flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
         >
           <div className="flex items-center gap-3">
             <div className="h-9 w-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
@@ -476,7 +569,10 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
               </span>
               <div className="flex items-baseline gap-2 mt-1">
                 <span className="text-2xl font-black text-slate-900 dark:text-white">
-                  {selectedActivityForModal.defaultPriceMonthly.toFixed(2)} €
+                  {(selectedActivityForModal.billingMode === 'per_class'
+                    ? selectedActivityForModal.defaultPricePerClass
+                    : selectedActivityForModal.defaultPriceMonthly
+                  ).toFixed(2)} €
                 </span>
                 <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
                   {selectedActivityForModal.billingMode === 'per_class' ? '/ clase impartida' : '/ mes completo'}
