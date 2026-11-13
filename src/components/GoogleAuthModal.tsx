@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   X,
@@ -6,10 +6,11 @@ import {
   LogOut,
   LogIn,
   AlertCircle,
-  Building,
-  GraduationCap,
-  Sparkles,
   Lock,
+  KeyRound,
+  Eye,
+  EyeOff,
+  CheckCircle2,
   Mail
 } from 'lucide-react';
 
@@ -23,6 +24,10 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
     currentUser,
     loginWithGoogle,
     loginWithEmail,
+    changePassword,
+    requestPasswordReset,
+    isPasswordRecoveryMode,
+    setIsPasswordRecoveryMode,
     logout,
     currentRole,
     setCurrentRole
@@ -32,12 +37,33 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Estado de cambio de contraseña (usuario autenticado o flujo recovery)
+  const [showChangePasswordForm, setShowChangePasswordForm] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  // Estado de restablecimiento de contraseña por email (cuando no hay sesión)
+  const [showResetRequest, setShowResetRequest] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    if (isPasswordRecoveryMode) {
+      setShowChangePasswordForm(true);
+    }
+  }, [isOpen, isPasswordRecoveryMode]);
 
   if (!isOpen) return null;
 
   const handleGoogleSignIn = async () => {
     setIsSubmitting(true);
     setErrorMessage(null);
+    setSuccessMessage(null);
     try {
       await loginWithGoogle();
     } catch (err: any) {
@@ -56,6 +82,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
 
     setIsSubmitting(true);
     setErrorMessage(null);
+    setSuccessMessage(null);
 
     try {
       const res = await loginWithEmail(email, password);
@@ -71,12 +98,70 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
     }
   };
 
+  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    if (newPassword.trim().length < 6) {
+      setErrorMessage('La nueva contraseña debe tener al menos 6 caracteres.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setErrorMessage('Las contraseñas no coinciden.');
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      const res = await changePassword(newPassword);
+      if (!res.success) {
+        setErrorMessage(res.error || 'No se pudo cambiar la contraseña.');
+      } else {
+        setSuccessMessage('Contraseña actualizada correctamente. Ya puedes acceder con tu nueva contraseña.');
+        setNewPassword('');
+        setConfirmNewPassword('');
+        setShowChangePasswordForm(false);
+        setIsPasswordRecoveryMode(false);
+      }
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
+  const handleSendResetEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    const targetEmail = email || currentUser?.email || '';
+    if (!targetEmail.trim()) {
+      setErrorMessage('Introduce tu correo electrónico para enviarte el enlace de cambio de contraseña.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await requestPasswordReset(targetEmail);
+      if (!res.success) {
+        setErrorMessage(res.error || 'No se pudo enviar el enlace de restablecimiento.');
+      } else {
+        setSuccessMessage(
+          `Hemos enviado un enlace a "${targetEmail}" para cambiar o restablecer tu contraseña.`
+        );
+        setShowResetRequest(false);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/70 p-0 sm:p-4 backdrop-blur-xs overflow-y-auto">
       <div className="relative w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[92dvh] sm:max-h-[88vh] flex flex-col overflow-hidden">
         
         {/* Cabecera del Modal */}
-        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-5 py-4 bg-slate-50/70 dark:bg-slate-800/40">
+        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-5 py-4 bg-slate-50/70 dark:bg-slate-800/40 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600/10 text-emerald-600 dark:text-emerald-400">
               <ShieldCheck className="h-5 w-5" />
@@ -91,6 +176,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 transition"
           >
@@ -100,6 +186,20 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
 
         {/* Contenido del Modal */}
         <div className="p-5 overflow-y-auto space-y-4 text-xs">
+          {/* Avisos de éxito o error */}
+          {successMessage && (
+            <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/30 p-3 text-emerald-800 dark:text-emerald-200 flex items-start gap-2">
+              <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
+              <p className="leading-relaxed font-semibold">{successMessage}</p>
+            </div>
+          )}
+
+          {errorMessage && (
+            <div className="rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 p-3 text-rose-700 dark:text-rose-300 flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <p className="leading-relaxed">{errorMessage}</p>
+            </div>
+          )}
 
           {/* Si ya hay usuario conectado */}
           {currentUser && (
@@ -187,6 +287,77 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                 </div>
               )}
 
+              {/* Cambio de contraseña directo para el usuario conectado */}
+              <div className="pt-2 border-t border-emerald-200 dark:border-emerald-900/60 space-y-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowChangePasswordForm(prev => !prev);
+                    setErrorMessage(null);
+                  }}
+                  className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-emerald-500/40 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-slate-800 transition"
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                  <span>
+                    {showChangePasswordForm ? 'Ocultar cambio de contraseña' : 'Cambiar mi contraseña'}
+                  </span>
+                </button>
+
+                {showChangePasswordForm && (
+                  <form
+                    onSubmit={handleChangePasswordSubmit}
+                    className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 space-y-2.5"
+                  >
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Nueva contraseña (mín. 6 caracteres) *
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showNewPassword ? 'text' : 'password'}
+                          required
+                          minLength={6}
+                          value={newPassword}
+                          onChange={e => setNewPassword(e.target.value)}
+                          placeholder="Introduce nueva contraseña"
+                          className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-3 pr-9 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowNewPassword(v => !v)}
+                          className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
+                        >
+                          {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Confirmar nueva contraseña *
+                      </label>
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        required
+                        minLength={6}
+                        value={confirmNewPassword}
+                        onChange={e => setConfirmNewPassword(e.target.value)}
+                        placeholder="Repite la nueva contraseña"
+                        className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isChangingPassword}
+                      className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition disabled:opacity-60"
+                    >
+                      {isChangingPassword ? 'Actualizando contraseña...' : 'Guardar nueva contraseña'}
+                    </button>
+                  </form>
+                )}
+              </div>
+
               <button
                 type="button"
                 onClick={async () => {
@@ -198,14 +369,6 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                 <LogOut className="h-4 w-4" />
                 <span>Cerrar Sesión</span>
               </button>
-            </div>
-          )}
-
-          {/* Avisos de error */}
-          {errorMessage && (
-            <div className="rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 p-3 text-rose-700 dark:text-rose-300 flex items-start gap-2">
-              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-              <p className="leading-relaxed">{errorMessage}</p>
             </div>
           )}
 
@@ -258,46 +421,95 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
             <div className="border-t border-slate-200 dark:border-slate-800 w-full" />
           </div>
 
-          {/* Formulario de Email y Contraseña (Solo Iniciar Sesión, sin autoregistro) */}
-          <form onSubmit={handleEmailAuthSubmit} className="space-y-3">
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Correo Electrónico
-              </label>
+          {showResetRequest ? (
+            /* Solicitud de cambio / recuperación por correo */
+            <form onSubmit={handleSendResetEmail} className="space-y-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-3.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Mail className="h-3.5 w-3.5 text-emerald-600" />
+                  <span>Cambiar o restablecer contraseña</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowResetRequest(false)}
+                  className="text-[11px] font-semibold text-slate-500 hover:underline"
+                >
+                  Volver
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Introduce tu correo autorizado y te enviaremos un enlace seguro para establecer una nueva contraseña.
+              </p>
               <input
                 type="email"
                 required
                 placeholder="tu.correo@actriskell.org"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white font-medium focus:outline-emerald-500"
+                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white font-medium focus:outline-emerald-500"
               />
-            </div>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full rounded-xl bg-emerald-600 px-4 py-2.5 font-bold text-white hover:bg-emerald-700 transition min-h-[42px]"
+              >
+                {isSubmitting ? 'Enviando enlace...' : 'Enviar enlace de cambio de contraseña'}
+              </button>
+            </form>
+          ) : (
+            /* Formulario de Email y Contraseña (Iniciar Sesión) */
+            <form onSubmit={handleEmailAuthSubmit} className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Correo Electrónico
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="tu.correo@actriskell.org"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white font-medium focus:outline-emerald-500"
+                />
+              </div>
 
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Contraseña
-              </label>
-              <input
-                type="password"
-                required
-                placeholder="Contraseña facilitada por administración"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white font-medium focus:outline-emerald-500"
-              />
-            </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                    Contraseña
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowResetRequest(true);
+                      setErrorMessage(null);
+                      setSuccessMessage(null);
+                    }}
+                    className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
+                  >
+                    ¿Cambiar o recuperar contraseña?
+                  </button>
+                </div>
+                <input
+                  type="password"
+                  required
+                  placeholder="Contraseña facilitada por administración"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white font-medium focus:outline-emerald-500"
+                />
+              </div>
 
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 font-bold text-white shadow-md shadow-emerald-600/20 hover:bg-emerald-700 transition min-h-[44px]"
-            >
-              <LogIn className="h-4 w-4" />
-              <span>{isSubmitting ? 'Verificando...' : 'Iniciar Sesión'}</span>
-            </button>
-          </form>
-
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 font-bold text-white shadow-md shadow-emerald-600/20 hover:bg-emerald-700 transition min-h-[44px]"
+              >
+                <LogIn className="h-4 w-4" />
+                <span>{isSubmitting ? 'Verificando...' : 'Iniciar Sesión'}</span>
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </div>

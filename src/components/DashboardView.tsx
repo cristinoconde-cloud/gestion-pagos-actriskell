@@ -13,7 +13,9 @@ import {
   Calendar,
   Sparkles,
   MessageCircle,
-  Plus
+  Plus,
+  UserCheck,
+  UserX
 } from 'lucide-react';
 
 interface DashboardViewProps {
@@ -40,12 +42,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     markPaymentPaid,
     teacherSummaries,
     students,
-    activities
+    activities,
+    validatePendingStudent
   } = useApp();
 
   // Alumnos con pagos pendientes en este mes
   const pendingPayments = periodPayments.filter(p => p.status === 'pending' || p.status === 'overdue');
   const paidPayments = periodPayments.filter(p => p.status === 'paid');
+
+  // Altas rápidas pendientes de confirmación definitiva por el Administrador
+  const pendingValidationStudents = students.filter(
+    s => s.status === 'pending_validation' || s.validationStatus === 'pending'
+  );
 
   // Profesores con saldo pendiente de abonar
   const teachersWithPendingBalance = teacherSummaries.filter(ts => ts.balanceToPay > 0);
@@ -67,9 +75,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Cabecera Portal del Administrador */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+            Portal del Administrador
+          </h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Control financiero mensual, cuotas, honorarios y gastos ({selectedPeriod})
+          </p>
+        </div>
+      </div>
+
       {/* KPI Cards de Finanzas Mensuales */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        {/* Recaudado Alumnos */}
+        {/* Recaudado */}
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
             <span className="text-[11px] font-semibold uppercase tracking-wider">Recaudado</span>
@@ -78,7 +98,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           </div>
           <div className="mt-1.5">
-            <span className="text-xl font-black text-slate-900 dark:text-white">
+            <span className="text-xl font-black tabular-nums text-slate-900 dark:text-white">
               {totalIncomeCollected.toFixed(2)} €
             </span>
             <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium mt-0.5">
@@ -87,16 +107,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        {/* Pendiente Alumnos */}
+        {/* Por cobrar */}
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
-            <span className="text-[11px] font-semibold uppercase tracking-wider">Por Cobrar</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider">Por cobrar</span>
             <div className="h-6 w-6 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
               <Clock className="h-3.5 w-3.5" />
             </div>
           </div>
           <div className="mt-1.5">
-            <span className="text-xl font-black text-amber-600 dark:text-amber-400">
+            <span className="text-xl font-black tabular-nums text-amber-600 dark:text-amber-400">
               {totalIncomePending.toFixed(2)} €
             </span>
             <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
@@ -105,7 +125,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        {/* Coste Profesores */}
+        {/* Profesores */}
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
             <span className="text-[11px] font-semibold uppercase tracking-wider">Profesores</span>
@@ -114,7 +134,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           </div>
           <div className="mt-1.5">
-            <span className="text-xl font-black text-slate-900 dark:text-white">
+            <span className="text-xl font-black tabular-nums text-slate-900 dark:text-white">
               {totalTeacherCosts.toFixed(2)} €
             </span>
             <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium mt-0.5">
@@ -123,16 +143,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        {/* Gastos del Centro */}
+        {/* Gastos */}
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
-            <span className="text-[11px] font-semibold uppercase tracking-wider">Gastos Local</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider">Gastos</span>
             <div className="h-6 w-6 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center">
               <ArrowUpRight className="h-3.5 w-3.5" />
             </div>
           </div>
           <div className="mt-1.5">
-            <span className="text-xl font-black text-slate-900 dark:text-white">
+            <span className="text-xl font-black tabular-nums text-slate-900 dark:text-white">
               {totalExpenses.toFixed(2)} €
             </span>
             <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
@@ -141,14 +161,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        {/* Balance Neto */}
+        {/* Margen neto */}
         <div className={`col-span-2 sm:col-span-2 lg:col-span-1 rounded-2xl border p-3.5 shadow-xs ${
           netMonthlyBalance >= 0
             ? 'border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20'
             : 'border-rose-500/30 bg-rose-50/50 dark:bg-rose-950/20'
         }`}>
           <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
-            <span className="text-[11px] font-semibold uppercase tracking-wider">Margen Neto</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider">Margen neto</span>
             {netMonthlyBalance >= 0 ? (
               <TrendingUp className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
             ) : (
@@ -156,7 +176,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
           </div>
           <div className="mt-1.5">
-            <span className={`text-xl font-black ${
+            <span className={`text-xl font-black tabular-nums ${
               netMonthlyBalance >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'
             }`}>
               {netMonthlyBalance.toFixed(2)} €
@@ -220,13 +240,89 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
+      {/* Altas rápidas pendientes de validación definitiva por Administrador */}
+      {pendingValidationStudents.length > 0 && (
+        <div className="rounded-2xl border border-amber-500/35 bg-amber-50/60 dark:bg-amber-950/20 p-5 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-amber-500/20">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Nuevos Socios Pendientes de Validación ({pendingValidationStudents.length})
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  Altas rápidas realizadas desde inscripción a taller a la espera de confirmación definitiva
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 divide-y divide-amber-500/15">
+            {pendingValidationStudents.map(st => {
+              const enrolledNames = (st.activities || [])
+                .map(enr => activities.find(a => a.id === enr.activityId)?.name)
+                .filter(Boolean)
+                .join(', ');
+
+              return (
+                <div
+                  key={st.id}
+                  className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900 dark:text-white text-sm">
+                        {st.name}
+                      </span>
+                      <span className="rounded-md bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                        Pendiente validación
+                      </span>
+                    </div>
+                    <div className="text-slate-600 dark:text-slate-300 mt-0.5">
+                      {[st.phone, st.email].filter(Boolean).join(' · ') || 'Sin datos de contacto'}
+                      {enrolledNames && (
+                        <>
+                          {' · '}
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                            Taller: {enrolledNames}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => validatePendingStudent(st.id, false)}
+                      className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 font-semibold text-slate-700 dark:text-slate-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:text-rose-700 transition"
+                    >
+                      <UserX className="h-3.5 w-3.5" />
+                      <span>Rechazar</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => validatePendingStudent(st.id, true)}
+                      className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 font-bold text-white hover:bg-emerald-700 shadow-xs transition"
+                    >
+                      <UserCheck className="h-3.5 w-3.5" />
+                      <span>Confirmar socio</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Grid de 2 Columnas: Alertas & Acciones Rápidas */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Columna Izquierda: Alumnos con Pago Pendiente */}
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs">
           <div className="flex items-center justify-between pb-3 border-b border-slate-200/80 dark:border-slate-800">
             <div className="flex items-center gap-2">
-              <div className="h-2.5 w-2.5 rounded-full bg-amber-500 animate-pulse"></div>
+              <Clock className="h-4 w-4 text-amber-500 shrink-0" />
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                 Cuotas Pendientes de Alumnos ({pendingPayments.length})
               </h3>
@@ -283,7 +379,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs">
           <div className="flex items-center justify-between pb-3 border-b border-slate-200/80 dark:border-slate-800">
             <div className="flex items-center gap-2">
-              <div className="h-2.5 w-2.5 rounded-full bg-indigo-500"></div>
+              <Users className="h-4 w-4 text-indigo-500 shrink-0" />
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                 Liquidación de Monitores ({selectedPeriod})
               </h3>

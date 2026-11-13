@@ -83,6 +83,10 @@ interface AppContextType {
   setCurrentUser: (user: AuthUser | null) => void;
   loginWithGoogle: () => Promise<void>;
   loginWithEmail: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
+  changePassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
+  isPasswordRecoveryMode: boolean;
+  setIsPasswordRecoveryMode: (recovery: boolean) => void;
   logout: () => Promise<void>;
   isAuthModalOpen: boolean;
   setIsAuthModalOpen: (open: boolean) => void;
@@ -129,7 +133,28 @@ interface AppContextType {
   addStudent: (student: Omit<Student, 'id' | 'registeredAt'>) => Promise<void>;
   updateStudent: (id: string, updates: Partial<Student>) => Promise<void>;
   deleteStudent: (id: string) => Promise<void>;
-  enrollStudentInActivity: (studentId: string, activityId: string, customPrice?: number) => Promise<void>;
+  enrollStudentInActivity: (studentId: string, activityId: string, customPrice?: number) => Promise<{ success: boolean; error?: string }>;
+  enrollUserFromProfile: (params: {
+    profile: {
+      id: string;
+      name: string;
+      email: string;
+      role: UserRole;
+      studentId?: string;
+      teacherId?: string;
+    };
+    activityId: string;
+    customPrice?: number;
+  }) => Promise<{ success: boolean; error?: string }>;
+  quickCreateAndEnrollStudent: (params: {
+    name: string;
+    email?: string;
+    phone?: string;
+    notes?: string;
+    activityId: string;
+    customPrice?: number;
+  }) => Promise<{ success: boolean; studentId?: string; error?: string }>;
+  validatePendingStudent: (studentId: string, approve: boolean) => Promise<{ success: boolean; error?: string }>;
 
   addTeacher: (teacher: Omit<Teacher, 'id'>) => Promise<void>;
   updateTeacher: (id: string, updates: Partial<Teacher>) => Promise<void>;
@@ -201,6 +226,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Estado de usuario y autenticación con Supabase Auth
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isPasswordRecoveryMode, setIsPasswordRecoveryMode] = useState(false);
 
   // Estados de navegación y roles
   const [selectedPeriod, setSelectedPeriod] = useState<string>('2026-11');
@@ -585,12 +611,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsPasswordRecoveryMode(true);
+        setIsAuthModalOpen(true);
+      }
       if (session?.user) {
         await syncUserProfile(session.user.id, session.user.email, session.user.user_metadata);
       } else {
         setCurrentUser(null);
       }
-
     });
 
     return () => {
@@ -690,10 +719,66 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Cambio de contraseña para el usuario autenticado en Supabase Auth
+  const changePassword = async (newPassword: string): Promise<{ success: boolean; error?: string }> => {
+    clearDbError();
+    try {
+      const trimmed = newPassword.trim();
+      if (trimmed.length < 6) {
+        return {
+          success: false,
+          error: 'La nueva contraseña debe tener al menos 6 caracteres.'
+        };
+      }
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session?.user) {
+        return {
+          success: false,
+          error: 'No hay una sesión activa de Supabase Auth. Inicia sesión con tu correo y contraseña actual o solicita un correo de restablecimiento.'
+        };
+      }
+
+      const { error } = await supabase.auth.updateUser({ password: trimmed });
+      if (error) {
+        handleSupabaseError('Cambiar contraseña', error);
+        return { success: false, error: error.message };
+      }
+
+      setIsPasswordRecoveryMode(false);
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'No se pudo actualizar la contraseña.' };
+    }
+  };
+
+  // Solicitar enlace de restablecimiento / cambio de contraseña por correo
+  const requestPasswordReset = async (email: string): Promise<{ success: boolean; error?: string }> => {
+    clearDbError();
+    try {
+      const emailNorm = email.trim().toLowerCase();
+      if (!emailNorm) {
+        return { success: false, error: 'Introduce tu correo electrónico.' };
+      }
+
+      const { error } = await supabase.auth.resetPasswordForEmail(emailNorm, {
+        redirectTo: window.location.origin
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'No se pudo enviar el correo de recuperación.' };
+    }
+  };
+
   // Cierre de sesión en Supabase
   const logout = async () => {
     try {
       clearCachedAuthSession();
+      setIsPasswordRecoveryMode(false);
       await supabase.auth.signOut();
       setCurrentUser(null);
     } catch (e) {
@@ -1257,23 +1342,281 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setStudents(prev => prev.filter(s => s.id !== id));
   };
 
-  const enrollStudentInActivity = async (studentId: string, activityId: string, customPrice?: number) => {
-    clearDbError();
+  const upsertEnrollmentRow = async (
+    studentId: string,
+    activityId: string,
+    customPrice?: number
+  ): Promise<{ error: any }> => {
     const act = activities.find(a => a.id === activityId);
-    const { error } = await supabase.from('student_enrollments').upsert({
+    const payload = {
       student_id: studentId,
       activity_id: activityId,
-      custom_price: customPrice || null,
+      custom_price: customPrice !== undefined ? customPrice : null,
       billing_mode: act?.billingMode || 'monthly',
       enrolled_since: new Date().toISOString().split('T')[0],
       active: true
-    });
+    };
+
+    const res = await supabase
+      .from('student_enrollments')
+      .upsert(payload, { onConflict: 'student_id,activity_id' });
+
+    if (res.error && (res.error.code === '42P10' || res.error.message?.includes('no unique or exclusion constraint'))) {
+      const { data: existing } = await supabase
+        .from('student_enrollments')
+        .select('id')
+        .eq('student_id', studentId)
+        .eq('activity_id', activityId)
+        .maybeSingle();
+
+      if (existing?.id) {
+        return await supabase
+          .from('student_enrollments')
+          .update(payload)
+          .eq('id', existing.id);
+      }
+      return await supabase.from('student_enrollments').insert([payload]);
+    }
+
+    return res;
+  };
+
+  const enrollStudentInActivity = async (
+    studentId: string,
+    activityId: string,
+    customPrice?: number
+  ): Promise<{ success: boolean; error?: string }> => {
+    clearDbError();
+    const { error } = await upsertEnrollmentRow(studentId, activityId, customPrice);
 
     if (error) {
       handleSupabaseError('Inscribir alumno en taller', error);
-      return;
+      return { success: false, error: error.message };
     }
     await refreshFromSupabase();
+    return { success: true };
+  };
+
+  const enrollUserFromProfile: AppContextType['enrollUserFromProfile'] = async ({
+    profile,
+    activityId,
+    customPrice
+  }) => {
+    clearDbError();
+    try {
+      const emailNorm = (profile.email || '').trim().toLowerCase();
+
+      // 1. Resolver si ya existe ficha en `students` (por studentId, profileId o email)
+      let resolvedStudent = students.find(
+        s =>
+          (profile.studentId && s.id === profile.studentId) ||
+          s.profileId === profile.id ||
+          (emailNorm && s.email.toLowerCase().trim() === emailNorm)
+      );
+
+      let resolvedStudentId = resolvedStudent?.id || profile.studentId;
+
+      if (!resolvedStudentId && emailNorm) {
+        const { data: existingByEmail } = await supabase
+          .from('students')
+          .select('id')
+          .ilike('email', emailNorm)
+          .maybeSingle();
+        if (existingByEmail?.id) {
+          resolvedStudentId = existingByEmail.id;
+        }
+      }
+
+      // 2. Si es monitor/admin/usuario de `profiles` sin ficha en `students`, crearla automáticamente
+      if (!resolvedStudentId) {
+        const basePayload = {
+          name: profile.name,
+          email: emailNorm || null,
+          phone: null,
+          status: 'active',
+          notes:
+            profile.role === 'teacher' || profile.role === 'teacher_student'
+              ? 'Monitor inscrito como alumno en taller'
+              : null
+        };
+
+        const extendedPayload = {
+          ...basePayload,
+          profile_id: profile.id,
+          validation_status: 'validated',
+          registered_by: currentUser?.id || null
+        };
+
+        let insertRes = await supabase
+          .from('students')
+          .insert([extendedPayload])
+          .select()
+          .single();
+
+        if (
+          insertRes.error &&
+          (insertRes.error.code === '42703' || insertRes.error.message?.includes('column'))
+        ) {
+          insertRes = await supabase
+            .from('students')
+            .insert([basePayload])
+            .select()
+            .single();
+        }
+
+        if (insertRes.error || !insertRes.data) {
+          const msg = insertRes.error?.message || 'No se pudo crear la ficha de alumno para el perfil.';
+          handleSupabaseError('Vincular usuario como alumno', insertRes.error || new Error(msg));
+          return { success: false, error: msg };
+        }
+
+        resolvedStudentId = insertRes.data.id;
+
+        // 3. Vincular student_id en profiles (y promover teacher -> teacher_student si aplica)
+        const profileUpdates: Record<string, any> = { student_id: resolvedStudentId };
+        if (profile.role === 'teacher') {
+          profileUpdates.role = 'teacher_student';
+        }
+        try {
+          await supabase.from('profiles').update(profileUpdates).eq('id', profile.id);
+        } catch {
+          // Best-effort: si RLS restringe editar profiles a otros usuarios, el trigger SQL o admin lo sincroniza
+        }
+      } else if (!resolvedStudent?.profileId) {
+        try {
+          await supabase.from('students').update({ profile_id: profile.id }).eq('id', resolvedStudentId);
+        } catch {
+          // Ignorar si la columna profile_id aún no existe o RLS no aplica
+        }
+      }
+
+      // 4. Registrar la matrícula en student_enrollments
+      const { error: enrollErr } = await upsertEnrollmentRow(resolvedStudentId!, activityId, customPrice);
+      if (enrollErr) {
+        handleSupabaseError('Registrar matrícula de usuario', enrollErr);
+        return { success: false, error: enrollErr.message };
+      }
+
+      await refreshFromSupabase();
+      return { success: true };
+    } catch (err: any) {
+      handleSupabaseError('Inscribir usuario existente', err);
+      return { success: false, error: err?.message || 'Error al inscribir usuario' };
+    }
+  };
+
+  const quickCreateAndEnrollStudent: AppContextType['quickCreateAndEnrollStudent'] = async ({
+    name,
+    email,
+    phone,
+    notes,
+    activityId,
+    customPrice
+  }) => {
+    clearDbError();
+    try {
+      const cleanName = name.trim();
+      const cleanEmail = email?.trim().toLowerCase() || null;
+      const cleanPhone = phone?.trim() || null;
+      const cleanNotes = notes?.trim() || 'Alta rápida desde inscripción a taller (pendiente de validación)';
+
+      const basePendingPayload = {
+        name: cleanName,
+        email: cleanEmail,
+        phone: cleanPhone,
+        status: 'pending_validation',
+        notes: cleanNotes
+      };
+
+      const extendedPendingPayload = {
+        ...basePendingPayload,
+        validation_status: 'pending',
+        registered_by: currentUser?.id || null
+      };
+
+      let createRes = await supabase
+        .from('students')
+        .insert([extendedPendingPayload])
+        .select()
+        .single();
+
+      if (
+        createRes.error &&
+        (createRes.error.code === '42703' || createRes.error.message?.includes('column'))
+      ) {
+        createRes = await supabase
+          .from('students')
+          .insert([basePendingPayload])
+          .select()
+          .single();
+      }
+
+      if (createRes.error || !createRes.data) {
+        const rawMsg = createRes.error?.message || 'Error al crear alumno provisional.';
+        const friendlyMsg = rawMsg.includes('students_status_check')
+          ? 'La restricción students_status_check en Supabase no incluye aún "pending_validation". Ejecuta el SQL de actualización.'
+          : rawMsg;
+        handleSupabaseError('Alta rápida de alumno pendiente', createRes.error || new Error(friendlyMsg));
+        return { success: false, error: friendlyMsg };
+      }
+
+      const newStudentId = createRes.data.id;
+      const { error: enrollErr } = await upsertEnrollmentRow(newStudentId, activityId, customPrice);
+
+      if (enrollErr) {
+        handleSupabaseError('Matricular alumno recién creado', enrollErr);
+        await refreshFromSupabase();
+        return { success: false, studentId: newStudentId, error: enrollErr.message };
+      }
+
+      await refreshFromSupabase();
+      return { success: true, studentId: newStudentId };
+    } catch (err: any) {
+      handleSupabaseError('Alta rápida y matrícula', err);
+      return { success: false, error: err?.message || 'Error inesperado al dar de alta al alumno' };
+    }
+  };
+
+  const validatePendingStudent: AppContextType['validatePendingStudent'] = async (
+    studentId,
+    approve
+  ) => {
+    clearDbError();
+    try {
+      const targetStatus = approve ? 'active' : 'inactive';
+      const extendedUpdate = {
+        status: targetStatus,
+        validation_status: approve ? 'validated' : 'rejected',
+        validated_at: new Date().toISOString(),
+        validated_by: currentUser?.id || null
+      };
+
+      let updateRes = await supabase
+        .from('students')
+        .update(extendedUpdate)
+        .eq('id', studentId);
+
+      if (
+        updateRes.error &&
+        (updateRes.error.code === '42703' || updateRes.error.message?.includes('column'))
+      ) {
+        updateRes = await supabase
+          .from('students')
+          .update({ status: targetStatus })
+          .eq('id', studentId);
+      }
+
+      if (updateRes.error) {
+        handleSupabaseError('Validar alta definitiva de socio', updateRes.error);
+        return { success: false, error: updateRes.error.message };
+      }
+
+      await refreshFromSupabase();
+      return { success: true };
+    } catch (err: any) {
+      handleSupabaseError('Validar socio pendiente', err);
+      return { success: false, error: err?.message || 'No se pudo validar el socio' };
+    }
   };
 
   // Pagos y Recibos
@@ -1753,6 +2096,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCurrentUser,
         loginWithGoogle,
         loginWithEmail,
+        changePassword,
+        requestPasswordReset,
+        isPasswordRecoveryMode,
+        setIsPasswordRecoveryMode,
         logout,
         isAuthModalOpen,
         setIsAuthModalOpen,
@@ -1782,6 +2129,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateStudent,
         deleteStudent,
         enrollStudentInActivity,
+        enrollUserFromProfile,
+        quickCreateAndEnrollStudent,
+        validatePendingStudent,
         addTeacher,
         updateTeacher,
         deleteTeacher,

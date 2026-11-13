@@ -29,7 +29,8 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
     payments,
     selectedPeriod,
     currentStudentId,
-    setCurrentStudentId
+    setCurrentStudentId,
+    currentRole
   } = useApp();
 
   // Estados de acordeones replegados por defecto
@@ -90,21 +91,23 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
             </div>
           </div>
 
-          {/* Selector de alumno para simulación rápida */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Ver como:</span>
-            <select
-              value={currentStudentId}
-              onChange={e => setCurrentStudentId(e.target.value)}
-              className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
-            >
-              {students.map(s => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Selector de alumno para simulación rápida (solo Administrador) */}
+          {currentRole === 'admin' && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Ver como:</span>
+              <select
+                value={currentStudentId}
+                onChange={e => setCurrentStudentId(e.target.value)}
+                className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
+              >
+                {students.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 

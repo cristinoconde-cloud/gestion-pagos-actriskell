@@ -16,11 +16,12 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({ isOpen, onClos
   const [email, setEmail] = useState(studentToEdit?.email || '');
   const [phone, setPhone] = useState(studentToEdit?.phone || '');
   const [notes, setNotes] = useState(studentToEdit?.notes || '');
+  // ✅ AHORA (Empieza completamente vacío sin asignar talleres por sorpresa):
   const [selectedActivityIds, setSelectedActivityIds] = useState<string[]>(
-    studentToEdit?.activities.map(a => a.activityId) || (activities[0] ? [activities[0].id] : [])
+    studentToEdit?.activities.map(a => a.activityId) || []
   );
   const [customPrices, setCustomPrices] = useState<Record<string, number>>(
-    studentToEdit?.activities.reduce((acc, a) => {
+    studentToEdit?.activities?.reduce((acc, a) => {
       if (a.customPrice !== undefined) acc[a.activityId] = a.customPrice;
       return acc;
     }, {} as Record<string, number>) || {}

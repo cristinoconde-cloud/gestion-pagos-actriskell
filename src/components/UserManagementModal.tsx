@@ -15,7 +15,9 @@ import {
   Building,
   GraduationCap,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  Clock,
+  UserX
 } from 'lucide-react';
 
 interface UserManagementModalProps {
@@ -31,8 +33,14 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
     deleteUserAccess,
     teachers,
     students,
+    activities,
+    validatePendingStudent,
     currentUser
   } = useApp();
+
+  const pendingValidationStudents = students.filter(
+    s => s.status === 'pending_validation' || s.validationStatus === 'pending'
+  );
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddingUser, setIsAddingUser] = useState(false);
@@ -190,6 +198,57 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
             <div className="rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 p-3 text-rose-700 dark:text-rose-300 flex items-start gap-2">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               <span>{feedbackError}</span>
+            </div>
+          )}
+
+          {pendingValidationStudents.length > 0 && !isAddingUser && (
+            <div className="rounded-xl border border-amber-500/35 bg-amber-50/70 dark:bg-amber-950/25 p-3.5 space-y-2.5">
+              <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200 font-bold">
+                <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span>
+                  Altas rápidas pendientes de confirmación definitiva ({pendingValidationStudents.length})
+                </span>
+              </div>
+              <div className="divide-y divide-amber-500/20">
+                {pendingValidationStudents.map(st => {
+                  const actNames = (st.activities || [])
+                    .map(e => activities.find(a => a.id === e.activityId)?.name)
+                    .filter(Boolean)
+                    .join(', ');
+                  return (
+                    <div
+                      key={st.id}
+                      className="py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                    >
+                      <div>
+                        <p className="font-bold text-slate-900 dark:text-white">{st.name}</p>
+                        <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                          {[st.phone, st.email].filter(Boolean).join(' · ') || 'Sin contacto'}
+                          {actNames ? ` · ${actNames}` : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => validatePendingStudent(st.id, false)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-rose-50 hover:text-rose-700 transition"
+                        >
+                          <UserX className="h-3 w-3" />
+                          <span>Rechazar</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => validatePendingStudent(st.id, true)}
+                          className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition"
+                        >
+                          <UserCheck className="h-3 w-3" />
+                          <span>Confirmar socio</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 

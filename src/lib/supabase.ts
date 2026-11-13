@@ -234,12 +234,21 @@ export function mapDbStudentToStudent(row: any, enrollments: any[] = []): Studen
       billingMode: e.billing_mode || 'monthly'
     }));
 
+  const status = row.status || 'active';
+  const validationStatus =
+    row.validation_status ||
+    (status === 'pending_validation' ? 'pending' : status === 'inactive' ? 'rejected' : 'validated');
+
   return {
     id: row.id,
     name: row.name || '',
     email: row.email || '',
     phone: row.phone || '',
-    status: row.status || 'active',
+    status,
+    validationStatus,
+    profileId: row.profile_id || undefined,
+    registeredBy: row.registered_by || undefined,
+    validatedAt: row.validated_at || undefined,
     registeredAt: row.registered_at || new Date().toISOString().split('T')[0],
     activities: studentEnrollments,
     notes: row.notes || ''

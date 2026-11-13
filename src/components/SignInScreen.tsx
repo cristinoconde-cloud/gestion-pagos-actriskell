@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { Fingerprint, Lock, Mail, Eye, EyeOff, ShieldCheck, Sparkles, UserCheck, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Fingerprint, Lock, Mail, Eye, EyeOff, ShieldCheck, AlertCircle, ArrowLeft, KeyRound, CheckCircle2 } from 'lucide-react';
 
 interface SignInScreenProps {
   onSuccess?: () => void;
@@ -11,6 +11,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
   const {
     loginWithGoogle,
     loginWithEmail,
+    requestPasswordReset,
     unlockWithBiometrics,
     hasBiometricsEnabled,
     biometricUser,
@@ -29,6 +30,8 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
   const [loading, setLoading] = useState(false);
   const [biometricLoading, setBiometricLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [isResetMode, setIsResetMode] = useState(false);
 
   // Pre-fill email if biometric user is stored
   useEffect(() => {
@@ -63,6 +66,30 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'Error al iniciar sesión.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePasswordResetRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+    setResetMessage(null);
+    if (!email.trim()) {
+      setErrorMessage('Introduce tu correo electrónico para cambiar o restablecer tu contraseña.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await requestPasswordReset(email);
+      if (res.success) {
+        setResetMessage(
+          `Hemos enviado un enlace a "${email.trim()}" para establecer una nueva contraseña.`
+        );
+        setIsResetMode(false);
+      } else {
+        setErrorMessage(res.error || 'No se pudo enviar el correo de recuperación.');
+      }
     } finally {
       setLoading(false);
     }
@@ -174,6 +201,14 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
           </p>
         </div>
 
+        {/* Mensaje de confirmación de cambio/recuperación */}
+        {resetMessage && (
+          <div className="mb-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 p-3 text-xs text-emerald-800 dark:text-emerald-200 flex items-start gap-2">
+            <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-emerald-600" />
+            <span className="flex-1">{resetMessage}</span>
+          </div>
+        )}
+
         {/* Mensaje de error si existe */}
         {(errorMessage || dbError) && (
           <div className="mb-4 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800/80 p-3 text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2">
@@ -256,74 +291,133 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
           </span>
         </div>
 
-        {/* Formulario de Correo / Contraseña */}
-        <form onSubmit={handlePasswordSignIn} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Correo Electrónico
-            </label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="ejemplo@actriskell.org"
-                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500 min-h-[40px]"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Contraseña
-            </label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                required
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="Tu contraseña"
-                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-10 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500 min-h-[40px]"
-              />
+        {/* Formulario de Correo / Contraseña o Recuperación */}
+        {isResetMode ? (
+          <form onSubmit={handlePasswordResetRequest} className="space-y-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                <KeyRound className="h-4 w-4 text-emerald-600" />
+                <span>Cambiar o recuperar contraseña</span>
+              </span>
               <button
                 type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                onClick={() => {
+                  setIsResetMode(false);
+                  setErrorMessage(null);
+                }}
+                className="text-xs font-semibold text-slate-500 hover:underline"
               >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                Volver
               </button>
             </div>
-          </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Te enviaremos un enlace seguro a tu correo autorizado para establecer una nueva contraseña.
+            </p>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Correo Electrónico
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="ejemplo@actriskell.org"
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pl-9 pr-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500 min-h-[40px]"
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 px-4 text-xs font-bold transition shadow-md shadow-emerald-600/20 min-h-[44px]"
+            >
+              {loading ? 'Enviando enlace...' : 'Enviar enlace para cambiar contraseña'}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handlePasswordSignIn} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Correo Electrónico
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="ejemplo@actriskell.org"
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500 min-h-[40px]"
+                />
+              </div>
+            </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white py-2.5 px-4 text-xs font-bold transition shadow-md shadow-emerald-600/20 min-h-[44px]"
-          >
-            {loading ? 'Verificando acceso...' : 'Iniciar Sesión'}
-          </button>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Contraseña
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsResetMode(true);
+                    setErrorMessage(null);
+                    setResetMessage(null);
+                  }}
+                  className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
+                >
+                  ¿Cambiar o recuperar contraseña?
+                </button>
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="Tu contraseña"
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-10 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500 min-h-[40px]"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
 
-          {/* Opción Biometría */}
-          {isBiometricsSupported && (
-            <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-600 dark:text-slate-400">
-              <input
-                type="checkbox"
-                checked={rememberBiometrics}
-                onChange={e => setRememberBiometrics(e.target.checked)}
-                className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
-              />
-              <span className="flex items-center gap-1">
-                <Fingerprint className="h-3.5 w-3.5 text-emerald-600" />
-                Habilitar desbloqueo biométrico en este dispositivo
-              </span>
-            </label>
-          )}          
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white py-2.5 px-4 text-xs font-bold transition shadow-md shadow-emerald-600/20 min-h-[44px]"
+            >
+              {loading ? 'Verificando acceso...' : 'Iniciar Sesión'}
+            </button>
 
-        </form>
+            {/* Opción Biometría */}
+            {isBiometricsSupported && (
+              <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-600 dark:text-slate-400">
+                <input
+                  type="checkbox"
+                  checked={rememberBiometrics}
+                  onChange={e => setRememberBiometrics(e.target.checked)}
+                  className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                />
+                <span className="flex items-center gap-1">
+                  <Fingerprint className="h-3.5 w-3.5 text-emerald-600" />
+                  Habilitar desbloqueo biométrico en este dispositivo
+                </span>
+              </label>
+            )}
+          </form>
+        )}
         {/* Acceso Rápido Demo (Ambiente AI Studio) */}
         <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 text-center">
           <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2.5">

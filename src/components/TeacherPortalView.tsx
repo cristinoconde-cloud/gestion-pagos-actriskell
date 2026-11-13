@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { PaymentMethod } from '../types';
+import { Activity, PaymentMethod } from '../types';
+import { ProfileView } from './ProfileView';
 import {
   Calendar,
   Users,
@@ -27,17 +28,208 @@ import {
 interface TeacherPortalViewProps {
   onOpenAddSession: (teacherId?: string) => void;
   onOpenRecordPayment: () => void;
-  onOpenAddActivity?: () => void;
+  onOpenAddActivity?: (activity?: Activity) => void;
+  onOpenAddStudent?: () => void;
+  onOpenEnrollStudent?: (activityId?: string) => void;
+  onNavigateToProfile?: () => void;
+}
+
+interface TeacherWorkshopsSectionProps {
+  onOpenAddActivity?: (activity?: Activity) => void;
   onOpenAddStudent?: () => void;
   onOpenEnrollStudent?: (activityId?: string) => void;
 }
+
+export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = ({
+  onOpenAddActivity,
+  onOpenAddStudent,
+  onOpenEnrollStudent
+}) => {
+  const { currentTeacherId, teachers, activities, students } = useApp();
+  const currentTeacher = teachers.find(t => t.id === currentTeacherId) || teachers[0];
+  const myActivities = useMemo(() => {
+    return activities.filter(a => a.teacherId === currentTeacher?.id);
+  }, [activities, currentTeacher?.id]);
+
+  return (
+    <div className="space-y-5">
+      {/* Barra de Acciones del Monitor (Crear taller, Inscribir, Nuevo alumno) */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+        <div>
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+            Tus Talleres Formativos ({myActivities.length})
+          </h3>
+          <p className="text-xs text-slate-500">
+            Solo tú puedes gestionar tus talleres y los alumnos que asisten a ellos
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {onOpenAddStudent && (
+            <button
+              type="button"
+              onClick={onOpenAddStudent}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-[40px]"
+            >
+              <UserPlus className="h-4 w-4" />
+              <span>+ Dar de Alta Nuevo Alumno</span>
+            </button>
+          )}
+
+          {onOpenEnrollStudent && (
+            <button
+              type="button"
+              onClick={() => onOpenEnrollStudent()}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-50/60 dark:bg-emerald-950/20 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition min-h-[40px]"
+            >
+              <UserCheck className="h-4 w-4" />
+              <span>+ Inscribir Alumno a Taller</span>
+            </button>
+          )}
+
+          {onOpenAddActivity && (
+            <button
+              type="button"
+              onClick={() => onOpenAddActivity()}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 shadow-xs transition min-h-[40px]"
+            >
+              <Plus className="h-4 w-4" />
+              <span>+ Crear Nuevo Taller</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Listado de Talleres */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {myActivities.length === 0 ? (
+          <div className="col-span-2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-400">
+            No tienes talleres registrados aún. Pulsa en "+ Crear Nuevo Taller".
+          </div>
+        ) : (
+          myActivities.map(act => {
+            const actStudents = students.filter(s =>
+              s.activities.some(enroll => enroll.activityId === act.id)
+            );
+            return (
+              <div
+                key={act.id}
+                className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs space-y-4"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-md bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
+                        {act.category}
+                      </span>
+                      <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-400">
+                        {act.billingMode === 'per_class' ? 'Pago por clase' : 'Cuota mensual'}
+                      </span>
+                    </div>
+                    <h4 className="text-base font-bold text-slate-900 dark:text-white mt-1">
+                      {act.name}
+                    </h4>
+                    <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">
+                      {act.description}
+                    </p>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 shrink-0">
+                    <div className="text-right">
+                      <span className="text-lg font-black tabular-nums text-slate-900 dark:text-white block">
+                        {act.billingMode === 'per_class' ? `${act.defaultPricePerClass} €/c` : `${act.defaultPriceMonthly} €/m`}
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        {actStudents.length} inscritos
+                      </span>
+                    </div>
+                    {onOpenAddActivity && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenAddActivity(act)}
+                        title="Editar actividad / taller"
+                        className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 transition"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                        <span>Editar</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
+                  <span>Sala: <strong>{act.room}</strong></span>
+                  <span>Horario: {act.schedule.join(' · ')}</span>
+                </div>
+
+                {act.bizum_enabled && (
+                  <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 p-2 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5 border border-emerald-500/20">
+                    <Smartphone className="h-3.5 w-3.5 text-emerald-600" />
+                    <span>Bizum: <strong>{act.bizum_phone}</strong> (Concepto: {act.bizum_concept})</span>
+                  </div>
+                )}
+
+                {/* Alumnos del taller */}
+                <div className="space-y-1.5 pt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold uppercase text-slate-400 block">
+                      Alumnos en este taller ({actStudents.length})
+                    </span>
+                    {onOpenEnrollStudent && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenEnrollStudent(act.id)}
+                        className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
+                      >
+                        + Inscribir aquí
+                      </button>
+                    )}
+                  </div>
+                  {actStudents.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">No hay alumnos asignados a este taller.</p>
+                  ) : (
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {actStudents.map(st => {
+                        const isPending =
+                          st.status === 'pending_validation' || st.validationStatus === 'pending';
+                        return (
+                          <div key={st.id} className="py-1.5 flex items-center justify-between gap-2 text-xs">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
+                                {st.name}
+                              </span>
+                              {isPending && (
+                                <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 shrink-0">
+                                  <Clock className="h-3 w-3" />
+                                  Pendiente validación
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[11px] text-slate-400 shrink-0">
+                              {st.phone || st.email}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+};
 
 export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   onOpenAddSession,
   onOpenRecordPayment,
   onOpenAddActivity,
   onOpenAddStudent,
-  onOpenEnrollStudent
+  onOpenEnrollStudent,
+  onNavigateToProfile
 }) => {
   const {
     currentTeacherId,
@@ -51,8 +243,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     periodPayments,
     recordClassPayment,
     addClassSession,
-    updateTeacher,
-    updateTeacherAvatar
+    currentRole
   } = useApp();
 
   const currentTeacher = teachers.find(t => t.id === currentTeacherId) || teachers[0];
@@ -101,26 +292,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       s.activities.some(act => act.activityId === activeClassActivity.id)
     );
   }, [students, activeClassActivity]);
-
-  // Estado de edición de Perfil del Monitor
-  const [profileName, setProfileName] = useState(currentTeacher?.name || '');
-  const [profilePhone, setProfilePhone] = useState(currentTeacher?.phone || '');
-  const [profileEmail, setProfileEmail] = useState(currentTeacher?.email || '');
-  const [profileAvatar, setProfileAvatar] = useState(currentTeacher?.avatar || '');
-  const [profileCollectionType, setProfileCollectionType] = useState<'personal' | 'association'>(
-    currentTeacher?.collectionType || 'personal'
-  );
-  const [profileSuccessMsg, setProfileSuccessMsg] = useState(false);
-
-  // Avatares rápidos predeterminados
-  const presetAvatars = [
-    'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80',
-    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
-    'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80',
-    'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80',
-    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
-    'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80'
-  ];
 
   // Handlers de Asistencia
   const setStudentAttendance = (studentId: string, status: 'present' | 'absent' | 'partial') => {
@@ -235,27 +406,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     setTimeout(() => setSaveSuccessMsg(null), 4000);
   };
 
-  // Guardar perfil del monitor
-  const handleSaveProfile = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!profileName.trim()) return;
-
-    updateTeacher(currentTeacher.id, {
-      name: profileName.trim(),
-      phone: profilePhone.trim(),
-      email: profileEmail.trim(),
-      avatar: profileAvatar.trim(),
-      collectionType: profileCollectionType
-    });
-
-    if (profileAvatar.trim()) {
-      updateTeacherAvatar(currentTeacher.id, profileAvatar.trim());
-    }
-
-    setProfileSuccessMsg(true);
-    setTimeout(() => setProfileSuccessMsg(false), 3000);
-  };
-
   return (
     <div className="space-y-6">
       {/* Banner Principal del Monitor */}
@@ -270,7 +420,13 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               />
               <button
                 type="button"
-                onClick={() => setActiveTab('profile')}
+                onClick={() => {
+                  if (onNavigateToProfile) {
+                    onNavigateToProfile();
+                  } else {
+                    setActiveTab('profile');
+                  }
+                }}
                 title="Cambiar foto de perfil"
                 className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-xs hover:bg-indigo-700 transition"
               >
@@ -298,92 +454,92 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
             </div>
           </div>
 
-          {/* Selector de Monitor (para testing de perspectiva) */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Monitor:</span>
-            <select
-              value={currentTeacherId}
-              onChange={e => {
-                setCurrentTeacherId(e.target.value);
-                const t = teachers.find(item => item.id === e.target.value);
-                if (t) {
-                  setProfileName(t.name);
-                  setProfilePhone(t.phone);
-                  setProfileEmail(t.email);
-                  setProfileAvatar(t.avatar || '');
-                  setProfileCollectionType(t.collectionType || 'personal');
-                }
-              }}
-              className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-indigo-500"
-            >
-              {teachers.map(t => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Selector de Monitor (solo Administrador para testing de perspectiva) */}
+          {currentRole === 'admin' && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Monitor:</span>
+              <select
+                value={currentTeacherId}
+                onChange={e => setCurrentTeacherId(e.target.value)}
+                className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-indigo-500"
+              >
+                {teachers.map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Pestañas de Navegación del Portal */}
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto no-scrollbar">
-        <button
-          onClick={() => setActiveTab('class_control')}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[44px] shrink-0 ${
-            activeTab === 'class_control'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-          }`}
-        >
-          <Calendar className="h-4 w-4" />
-          <span>Control de Clase & Cobros</span>
-          <span className="rounded-full bg-emerald-400 text-slate-950 px-1.5 py-0.2 text-[9px] font-black uppercase">
-            En vivo
-          </span>
-        </button>
+      {/* Pestañas de Navegación Interna del Portal (ocultas en rol Monitor puro porque usa barra principal de 5 pestañas) */}
+      {currentRole !== 'teacher' && (
+        <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto no-scrollbar">
+          <button
+            onClick={() => setActiveTab('class_control')}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[44px] shrink-0 ${
+              activeTab === 'class_control'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+            }`}
+          >
+            <Calendar className="h-4 w-4" />
+            <span>Control de Clase & Cobros</span>
+            <span className="rounded-full bg-emerald-400 text-slate-950 px-1.5 py-0.2 text-[9px] font-black uppercase">
+              En vivo
+            </span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('workshops')}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[44px] shrink-0 ${
-            activeTab === 'workshops'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-          }`}
-        >
-          <Sparkles className="h-4 w-4" />
-          <span>Mis Talleres & Alumnos ({myActivities.length})</span>
-        </button>
+          <button
+            onClick={() => setActiveTab('workshops')}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[44px] shrink-0 ${
+              activeTab === 'workshops'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+            }`}
+          >
+            <Sparkles className="h-4 w-4" />
+            <span>Mis Talleres & Alumnos ({myActivities.length})</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('payout')}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[44px] shrink-0 ${
-            activeTab === 'payout'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-          }`}
-        >
-          <DollarSign className="h-4 w-4" />
-          <span>Mi Liquidación ({selectedPeriod})</span>
-        </button>
+          <button
+            onClick={() => setActiveTab('payout')}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[44px] shrink-0 ${
+              activeTab === 'payout'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+            }`}
+          >
+            <DollarSign className="h-4 w-4" />
+            <span>Mi Liquidación ({selectedPeriod})</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('profile')}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[44px] shrink-0 ${
-            activeTab === 'profile'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-          }`}
-        >
-          <Camera className="h-4 w-4" />
-          <span>Mi Perfil & Foto</span>
-        </button>
-      </div>
+          <button
+            onClick={() => {
+              if (onNavigateToProfile) {
+                onNavigateToProfile();
+              } else {
+                setActiveTab('profile');
+              }
+            }}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[44px] shrink-0 ${
+              activeTab === 'profile'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+            }`}
+          >
+            <Camera className="h-4 w-4" />
+            <span>Mi Perfil & Foto</span>
+          </button>
+        </div>
+      )}
 
       {/* =========================================================================
           PESTAÑA 1: CONTROL DE ASISTENCIA Y COBROS EN CLASE (HERRAMIENTA CLAVE)
           ========================================================================= */}
-      {activeTab === 'class_control' && (
+      {(currentRole === 'teacher' || activeTab === 'class_control') && (
         <div className="space-y-5">
           {/* Barra de Selección de Clase */}
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs space-y-3">
@@ -762,139 +918,12 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       {/* =========================================================================
           PESTAÑA 2: MIS TALLERES & GESTIÓN DE ALUMNOS (PERMISOS COMPLETOS)
           ========================================================================= */}
-      {activeTab === 'workshops' && (
-        <div className="space-y-5">
-          {/* Barra de Acciones del Monitor (Crear taller, Inscribir, Nuevo alumno) */}
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                Tus Talleres Formativos ({myActivities.length})
-              </h3>
-              <p className="text-xs text-slate-500">
-                Solo tú puedes gestionar tus talleres y los alumnos que asisten a ellos
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {onOpenAddStudent && (
-                <button
-                  type="button"
-                  onClick={onOpenAddStudent}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-[40px]"
-                >
-                  <UserPlus className="h-4 w-4" />
-                  <span>+ Dar de Alta Nuevo Alumno</span>
-                </button>
-              )}
-
-              {onOpenEnrollStudent && (
-                <button
-                  type="button"
-                  onClick={() => onOpenEnrollStudent()}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-50/60 dark:bg-emerald-950/20 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition min-h-[40px]"
-                >
-                  <UserCheck className="h-4 w-4" />
-                  <span>+ Inscribir Alumno a Taller</span>
-                </button>
-              )}
-
-              {onOpenAddActivity && (
-                <button
-                  type="button"
-                  onClick={onOpenAddActivity}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 shadow-xs transition min-h-[40px]"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>+ Crear Nuevo Taller</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Listado de Talleres */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {myActivities.length === 0 ? (
-              <div className="col-span-2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-400">
-                No tienes talleres registrados aún. Pulsa en "+ Crear Nuevo Taller".
-              </div>
-            ) : (
-              myActivities.map(act => {
-                const actStudents = students.filter(s =>
-                  s.activities.some(enroll => enroll.activityId === act.id)
-                );
-                return (
-                  <div
-                    key={act.id}
-                    className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs space-y-4"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="rounded-md bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
-                            {act.category}
-                          </span>
-                          <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-400">
-                            {act.billingMode === 'per_class' ? 'Pago por clase' : 'Cuota mensual'}
-                          </span>
-                        </div>
-                        <h4 className="text-base font-bold text-slate-900 dark:text-white mt-1">
-                          {act.name}
-                        </h4>
-                        <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">
-                          {act.description}
-                        </p>
-                      </div>
-
-                      <div className="text-right shrink-0">
-                        <span className="text-lg font-black text-slate-900 dark:text-white block">
-                          {act.billingMode === 'per_class' ? `${act.defaultPricePerClass} €/c` : `${act.defaultPriceMonthly} €/m`}
-                        </span>
-                        <span className="text-[11px] text-slate-400">
-                          {actStudents.length} inscritos
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
-                      <span>Sala: <strong>{act.room}</strong></span>
-                      <span>Horario: {act.schedule.join(' · ')}</span>
-                    </div>
-
-                    {act.bizum_enabled && (
-                      <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 p-2 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5 border border-emerald-500/20">
-                        <Smartphone className="h-3.5 w-3.5 text-emerald-600" />
-                        <span>Bizum: <strong>{act.bizum_phone}</strong> (Concepto: {act.bizum_concept})</span>
-                      </div>
-                    )}
-
-                    {/* Alumnos del taller */}
-                    <div className="space-y-1.5 pt-2">
-                      <span className="text-[11px] font-bold uppercase text-slate-400 block">
-                        Alumnos en este taller ({actStudents.length})
-                      </span>
-                      {actStudents.length === 0 ? (
-                        <p className="text-xs text-slate-400 italic">No hay alumnos asignados a este taller.</p>
-                      ) : (
-                        <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                          {actStudents.map(st => (
-                            <div key={st.id} className="py-1.5 flex items-center justify-between text-xs">
-                              <span className="font-semibold text-slate-800 dark:text-slate-200">
-                                {st.name}
-                              </span>
-                              <span className="text-[11px] text-slate-400">
-                                {st.phone}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
+      {currentRole !== 'teacher' && activeTab === 'workshops' && (
+        <TeacherWorkshopsSection
+          onOpenAddActivity={onOpenAddActivity}
+          onOpenAddStudent={onOpenAddStudent}
+          onOpenEnrollStudent={onOpenEnrollStudent}
+        />
       )}
 
       {/* =========================================================================
@@ -997,177 +1026,9 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       )}
 
       {/* =========================================================================
-          PESTAÑA 4: MI PERFIL DE MONITOR & ACTUALIZACIÓN DE IMAGEN
+          PESTAÑA 4: PERFIL UNIVERSAL (Datos Personales y Preferencias Personales y Seguridad)
           ========================================================================= */}
-      {activeTab === 'profile' && (
-        <div className="max-w-2xl mx-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-xs space-y-5">
-          <div className="border-b border-slate-200 dark:border-slate-800 pb-3">
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">
-              Perfil y Foto del Monitor
-            </h3>
-            <p className="text-xs text-slate-500">
-              Actualiza tu imagen, tus datos de contacto y el modo de cobro preferido
-            </p>
-          </div>
-
-          {profileSuccessMsg && (
-            <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/30 p-3 text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
-              <Check className="h-4 w-4 text-emerald-600" />
-              <span>¡Perfil e imagen de monitor actualizados con éxito!</span>
-            </div>
-          )}
-
-          <form onSubmit={handleSaveProfile} className="space-y-4">
-            {/* Foto Actual y Previsualización */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
-              <img
-                src={profileAvatar || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80'}
-                alt={profileName}
-                className="h-20 w-20 rounded-2xl object-cover border-2 border-indigo-500 shadow-md shrink-0"
-              />
-              <div className="space-y-1">
-                <span className="text-xs font-bold text-slate-900 dark:text-white block">
-                  Foto de perfil visible para alumnos y dirección
-                </span>
-                <p className="text-[11px] text-slate-500">
-                  Esta foto se mostrará en el portal de los alumnos y en la cabecera.
-                </p>
-
-                {/* Galería de avatares rápidos */}
-                <div className="flex items-center gap-2 pt-2">
-                  <span className="text-[11px] font-semibold text-slate-400">Predefinidos:</span>
-                  <div className="flex items-center gap-1.5">
-                    {presetAvatars.map((url, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => setProfileAvatar(url)}
-                        className={`h-7 w-7 rounded-lg overflow-hidden border-2 transition ${
-                          profileAvatar === url ? 'border-indigo-600 scale-110' : 'border-transparent opacity-75 hover:opacity-100'
-                        }`}
-                      >
-                        <img src={url} alt="Preset" className="h-full w-full object-cover" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* URL personalizada de avatar */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Enlace a tu foto (URL de imagen)
-              </label>
-              <input
-                type="url"
-                placeholder="https://..."
-                value={profileAvatar}
-                onChange={e => setProfileAvatar(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-indigo-500 font-mono"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Nombre Completo *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={profileName}
-                  onChange={e => setProfileName(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-900 dark:text-white focus:outline-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Teléfono (WhatsApp de clases)
-                </label>
-                <input
-                  type="tel"
-                  value={profilePhone}
-                  onChange={e => setProfilePhone(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-indigo-500"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Correo Electrónico
-              </label>
-              <input
-                type="email"
-                value={profileEmail}
-                onChange={e => setProfileEmail(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-indigo-500"
-              />
-            </div>
-
-            {/* Tipo de cobro por defecto */}
-            <div className="rounded-xl border border-indigo-500/20 bg-indigo-50/40 dark:bg-indigo-950/20 p-3.5 space-y-2">
-              <span className="text-xs font-bold text-indigo-900 dark:text-indigo-300 block">
-                Tipo de Cobro por Defecto de tus Clases
-              </span>
-              <p className="text-[11px] text-slate-500">
-                En asociaciones, el cobro habitual es directo entre alumno y monitor al comenzar/finalizar la clase.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                <label
-                  className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition ${
-                    profileCollectionType === 'personal'
-                      ? 'border-indigo-600 bg-white dark:bg-slate-900 shadow-xs'
-                      : 'border-slate-200 dark:border-slate-800 bg-transparent'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="collectionType"
-                    checked={profileCollectionType === 'personal'}
-                    onChange={() => setProfileCollectionType('personal')}
-                    className="text-indigo-600"
-                  />
-                  <span className="text-xs font-bold text-slate-900 dark:text-white">
-                    Personal (Cobro directo alumno ➜ monitor)
-                  </span>
-                </label>
-
-                <label
-                  className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition ${
-                    profileCollectionType === 'association'
-                      ? 'border-indigo-600 bg-white dark:bg-slate-900 shadow-xs'
-                      : 'border-slate-200 dark:border-slate-800 bg-transparent'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="collectionType"
-                    checked={profileCollectionType === 'association'}
-                    onChange={() => setProfileCollectionType('association')}
-                    className="text-indigo-600"
-                  />
-                  <span className="text-xs font-bold text-slate-900 dark:text-white">
-                    Asociación (El centro recauda primero)
-                  </span>
-                </label>
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-3">
-              <button
-                type="submit"
-                className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition min-h-[44px]"
-              >
-                <Check className="h-4 w-4" />
-                <span>Guardar Cambios de Perfil</span>
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+      {activeTab === 'profile' && <ProfileView />}
     </div>
   );
 };

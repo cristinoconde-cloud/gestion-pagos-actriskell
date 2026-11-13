@@ -7,7 +7,9 @@ import { TeachersView } from './components/TeachersView';
 import { ActivitiesView } from './components/ActivitiesView';
 import { ExpensesView } from './components/ExpensesView';
 import { TeacherPortalView } from './components/TeacherPortalView';
+import { TeacherPayoutsView } from './components/TeacherPayoutsView';
 import { StudentPortalView } from './components/StudentPortalView';
+import { ProfileView } from './components/ProfileView';
 import { CalendarView } from './components/CalendarView';
 import { AdminConfigView } from './components/AdminConfigView';
 import { SplashScreen } from './components/SplashScreen';
@@ -134,17 +136,23 @@ const MainAppContent: React.FC = () => {
   const availableTabsForRole = useMemo(() => {
     switch (currentRole) {
       case 'admin':
-        return ['dashboard', 'calendar', 'payments', 'teachers', 'activities', 'expenses', 'admin-config', 'teacher-portal', 'student-portal'];
+        return ['dashboard', 'calendar', 'payments', 'teachers', 'activities', 'expenses', 'admin-config', 'teacher-portal', 'student-portal', 'profile'];
       case 'teacher':
-        return ['teacher-portal', 'calendar', 'activities'];
+        return ['teacher-portal', 'calendar', 'activities', 'teacher-payouts', 'profile'];
       case 'student':
-        return ['student-portal', 'calendar'];
+        return ['student-portal', 'calendar', 'activities', 'profile'];
       case 'teacher_student':
-        return ['teacher-portal', 'student-portal', 'calendar', 'activities'];
+        return ['teacher-portal', 'student-portal', 'calendar', 'activities', 'profile'];
       default:
-        return ['dashboard', 'calendar'];
+        return ['dashboard', 'calendar', 'profile'];
     }
   }, [currentRole]);
+
+  useEffect(() => {
+    if (!availableTabsForRole.includes(currentTab)) {
+      setCurrentTab(availableTabsForRole[0]);
+    }
+  }, [availableTabsForRole, currentTab]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchStartX(e.touches[0].clientX);
@@ -300,7 +308,7 @@ const MainAppContent: React.FC = () => {
             </div>
           </div>
         )}
-        {currentTab === 'dashboard' && (
+        {currentTab === 'dashboard' && availableTabsForRole.includes('dashboard') && (
           <DashboardView
             onOpenRecordPayment={handleOpenRecordPayment}
             onOpenAddSession={handleOpenAddSession}
@@ -309,14 +317,14 @@ const MainAppContent: React.FC = () => {
           />
         )}
 
-        {currentTab === 'payments' && (
+        {currentTab === 'payments' && availableTabsForRole.includes('payments') && (
           <PaymentsView
             onOpenRecordPayment={handleOpenRecordPayment}
             onOpenAddStudent={() => handleOpenAddStudent()}
           />
         )}
 
-        {currentTab === 'teachers' && (
+        {currentTab === 'teachers' && availableTabsForRole.includes('teachers') && (
           <TeachersView
             onOpenTeacherPayout={handleOpenTeacherPayout}
             onOpenAddTeacher={handleOpenAddTeacher}
@@ -324,24 +332,9 @@ const MainAppContent: React.FC = () => {
           />
         )}
 
-        {currentTab === 'activities' && (
+        {currentTab === 'activities' && availableTabsForRole.includes('activities') && (
           <ActivitiesView
             onOpenAddActivity={handleOpenAddActivity}
-            onOpenAddStudent={() => handleOpenAddStudent()}
-          />
-        )}
-
-        {currentTab === 'expenses' && (
-          <ExpensesView
-            onOpenAddExpense={() => setIsAddExpenseOpen(true)}
-          />
-        )}
-
-        {currentTab === 'teacher-portal' && (
-          <TeacherPortalView
-            onOpenAddSession={handleOpenAddSession}
-            onOpenRecordPayment={() => handleOpenRecordPayment()}
-            onOpenAddActivity={() => handleOpenAddActivity()}
             onOpenAddStudent={() => handleOpenAddStudent()}
             onOpenEnrollStudent={(activityId?: string) => {
               setEnrollActivityId(activityId);
@@ -350,19 +343,50 @@ const MainAppContent: React.FC = () => {
           />
         )}
 
-        {currentTab === 'student-portal' && (
+        {currentTab === 'expenses' && availableTabsForRole.includes('expenses') && (
+          <ExpensesView
+            onOpenAddExpense={() => setIsAddExpenseOpen(true)}
+          />
+        )}
+
+        {currentTab === 'teacher-portal' && availableTabsForRole.includes('teacher-portal') && (
+          <TeacherPortalView
+            onOpenAddSession={handleOpenAddSession}
+            onOpenRecordPayment={() => handleOpenRecordPayment()}
+            onOpenAddActivity={(activity?: Activity) => handleOpenAddActivity(activity)}
+            onOpenAddStudent={() => handleOpenAddStudent()}
+            onOpenEnrollStudent={(activityId?: string) => {
+              setEnrollActivityId(activityId);
+              setIsEnrollStudentOpen(true);
+            }}
+            onNavigateToProfile={() => setCurrentTab('profile')}
+          />
+        )}
+
+        {currentTab === 'teacher-payouts' && availableTabsForRole.includes('teacher-payouts') && (
+          <TeacherPayoutsView />
+        )}
+
+        {currentTab === 'student-portal' && availableTabsForRole.includes('student-portal') && (
           <StudentPortalView />
         )}
 
-        {currentTab === 'calendar' && (
+        {currentTab === 'calendar' && availableTabsForRole.includes('calendar') && (
           <CalendarView
             onOpenAddSession={handleOpenAddSession}
             onNavigateToActivities={() => setCurrentTab('activities')}
           />
         )}
 
-        {currentTab === 'admin-config' && (
+        {currentTab === 'admin-config' && availableTabsForRole.includes('admin-config') && (
           <AdminConfigView />
+        )}
+
+        {currentTab === 'profile' && availableTabsForRole.includes('profile') && (
+          <ProfileView
+            onNavigate={navigateTo}
+            onNavigateToTab={setCurrentTab}
+          />
         )}
       </main>
 
@@ -456,6 +480,8 @@ const MainAppContent: React.FC = () => {
             setEditingActivity(null);
           }}
           activityToEdit={editingActivity}
+          defaultTeacherId={currentRole !== 'admin' ? currentTeacherId : undefined}
+          lockTeacherSelection={currentRole !== 'admin'}
         />
       )}
 
@@ -485,6 +511,7 @@ const MainAppContent: React.FC = () => {
             setEnrollActivityId(undefined);
           }}
           initialActivityId={enrollActivityId}
+          allowedTeacherId={currentRole === 'teacher' ? currentTeacherId : undefined}
         />
       )}
 

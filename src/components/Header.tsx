@@ -13,7 +13,15 @@ import {
   GraduationCap,
   Calendar,
   Database,
-  MoreVertical // <-- Importado para el menú móvil
+  MoreVertical,
+  LayoutDashboard,
+  CreditCard,
+  Sparkles,
+  Receipt,
+  Settings,
+  BookOpen,
+  DollarSign,
+  User
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -130,128 +138,139 @@ export const Header: React.FC<HeaderProps> = ({
 {/* 3. Acciones de la derecha */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             
-            {/* Botón Nuevo Registro (Escritorio) */}
-            <div className="relative hidden md:block">
-              <button
-                onClick={() => setShowNewMenu(!showNewMenu)}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm shadow-emerald-700/20 hover:bg-emerald-700 transition"
-              >
-                <Plus className="h-4 w-4" />
-                <span>Nuevo</span>
-              </button>
-
-              {showNewMenu && (
-                <div
-                  onMouseLeave={() => setShowNewMenu(false)}
-                  className="absolute right-0 mt-2 w-52 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1.5 shadow-xl z-50 text-xs"
-                >
-                  <button
-                    onClick={() => { setShowNewMenu(false); onOpenRecordPayment(); }}
-                    className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 hover:text-emerald-700 flex items-center gap-2"
-                  >
-                    <span>💳</span>
-                    <span className="font-medium">Registrar Pago / Cuota</span>
-                  </button>
-                  <button
-                    onClick={() => { setShowNewMenu(false); onOpenAddStudent(); }}
-                    className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 hover:text-emerald-700 flex items-center gap-2"
-                  >
-                    <span>👤</span>
-                    <span className="font-medium">Inscribir Alumno</span>
-                  </button>
-                  <button
-                    onClick={() => { setShowNewMenu(false); onOpenAddSession(); }}
-                    className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 hover:text-emerald-700 flex items-center gap-2"
-                  >
-                    <span>📅</span>
-                    <span className="font-medium">Anotar Clase Impartida</span>
-                  </button>
-                  <button
-                    onClick={() => { setShowNewMenu(false); onOpenAddExpense(); }}
-                    className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 hover:text-emerald-700 flex items-center gap-2"
-                  >
-                    <span>🧾</span>
-                    <span className="font-medium">Registrar Gasto del Centro</span>
-                  </button>
-                  <button
-                    onClick={() => { setShowNewMenu(false); onOpenAddTeacher(); }}
-                    className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 hover:text-emerald-700 flex items-center gap-2 border-t border-slate-100 dark:border-slate-800"
-                  >
-                    <span>🎓</span>
-                    <span className="font-medium">Alta de Monitor</span>
-                  </button>
-
-                  {currentRole === 'admin' && (
-                    <button
-                      onClick={() => { setShowNewMenu(false); onOpenUserManagement(); }}
-                      className="w-full text-left rounded-lg px-3 py-2 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 flex items-center gap-2 border-t border-indigo-100 dark:border-indigo-900/60 font-semibold"
-                    >
-                      <span>🛡️</span>
-                      <span>Alta de Usuario & Acceso</span>
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Elementos de Escritorio (Exportar, Supabase, Permisos, Google) */}
-            <div className="hidden md:flex items-center gap-2">
-              <div className="relative">
+            {/* Botón Nuevo Registro (Escritorio - oculto para alumnos) */}
+            {currentRole !== 'student' && (
+              <div className="relative hidden md:block">
                 <button
-                  onClick={() => setShowExportMenu(!showExportMenu)}
-                  title="Exportar datos a CSV"
-                  className="rounded-xl border border-slate-200 dark:border-slate-800 p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                  onClick={() => setShowNewMenu(!showNewMenu)}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm shadow-emerald-700/20 hover:bg-emerald-700 transition whitespace-nowrap"
                 >
-                  <Download className="h-4 w-4" />
+                  <Plus className="h-4 w-4" />
+                  <span>Nuevo</span>
                 </button>
-                {showExportMenu && (
+
+                {showNewMenu && (
                   <div
-                    onMouseLeave={() => setShowExportMenu(false)}
-                    className="absolute right-0 mt-2 w-48 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1.5 shadow-xl z-50 text-xs"
+                    onMouseLeave={() => setShowNewMenu(false)}
+                    className="absolute right-0 mt-2 w-52 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1.5 shadow-xl z-50 text-xs"
                   >
-                    <div className="px-3 py-1 font-semibold text-slate-400 uppercase text-[10px]">
-                      Exportar a Excel / CSV
-                    </div>
-                    <button onClick={() => { exportToCSV('payments'); setShowExportMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                      Pagos del Mes ({selectedPeriod})
+                    <button
+                      onClick={() => { setShowNewMenu(false); onOpenRecordPayment(); }}
+                      className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 hover:text-emerald-700 flex items-center gap-2"
+                    >
+                      <span>💳</span>
+                      <span className="font-medium">Registrar Pago / Cuota</span>
                     </button>
-                    <button onClick={() => { exportToCSV('students'); setShowExportMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                      Censo de Alumnos
+                    <button
+                      onClick={() => { setShowNewMenu(false); onOpenAddStudent(); }}
+                      className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 hover:text-emerald-700 flex items-center gap-2"
+                    >
+                      <span>👤</span>
+                      <span className="font-medium">Inscribir Alumno</span>
                     </button>
-                    <button onClick={() => { exportToCSV('expenses'); setShowExportMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                      Gastos del Centro
+                    <button
+                      onClick={() => { setShowNewMenu(false); onOpenAddSession(); }}
+                      className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 hover:text-emerald-700 flex items-center gap-2"
+                    >
+                      <span>📅</span>
+                      <span className="font-medium">Anotar Clase Impartida</span>
                     </button>
-                    <button onClick={() => { exportToCSV('teachers'); setShowExportMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                      Listado de Monitores
-                    </button>
+                    {currentRole === 'admin' && (
+                      <>
+                        <button
+                          onClick={() => { setShowNewMenu(false); onOpenAddExpense(); }}
+                          className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 hover:text-emerald-700 flex items-center gap-2"
+                        >
+                          <span>🧾</span>
+                          <span className="font-medium">Registrar Gasto del Centro</span>
+                        </button>
+                        <button
+                          onClick={() => { setShowNewMenu(false); onOpenAddTeacher(); }}
+                          className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 hover:text-emerald-700 flex items-center gap-2 border-t border-slate-100 dark:border-slate-800"
+                        >
+                          <span>🎓</span>
+                          <span className="font-medium">Alta de Monitor</span>
+                        </button>
+                        <button
+                          onClick={() => { setShowNewMenu(false); onOpenUserManagement(); }}
+                          className="w-full text-left rounded-lg px-3 py-2 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 flex items-center gap-2 border-t border-indigo-100 dark:border-indigo-900/60 font-semibold"
+                        >
+                          <span>🛡️</span>
+                          <span>Alta de Usuario & Acceso</span>
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
+            )}
 
-              <button
-                onClick={onOpenSupabaseModal}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300"
-              >
-                <Database className="h-3.5 w-3.5 text-emerald-600" />
-                <span>Supabase</span>
-              </button>
-
+            {/* Elementos de Escritorio (Exportar, Supabase, Permisos, Usuario) */}
+            <div className="hidden md:flex items-center gap-2">
               {currentRole === 'admin' && (
-                <button
-                  onClick={onOpenUserManagement}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/50 dark:bg-indigo-950/20 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300"
-                >
-                  <UserCheck className="h-3.5 w-3.5 text-indigo-600" />
-                  <span>Permisos</span>
-                </button>
+                <>
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowExportMenu(!showExportMenu)}
+                      title="Exportar datos a CSV"
+                      className="rounded-xl border border-slate-200 dark:border-slate-800 p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                    >
+                      <Download className="h-4 w-4" />
+                    </button>
+                    {showExportMenu && (
+                      <div
+                        onMouseLeave={() => setShowExportMenu(false)}
+                        className="absolute right-0 mt-2 w-48 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1.5 shadow-xl z-50 text-xs"
+                      >
+                        <div className="px-3 py-1 font-semibold text-slate-400 uppercase text-[10px]">
+                          Exportar a Excel / CSV
+                        </div>
+                        <button onClick={() => { exportToCSV('payments'); setShowExportMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
+                          Pagos del Mes ({selectedPeriod})
+                        </button>
+                        <button onClick={() => { exportToCSV('students'); setShowExportMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
+                          Censo de Alumnos
+                        </button>
+                        <button onClick={() => { exportToCSV('expenses'); setShowExportMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
+                          Gastos del Centro
+                        </button>
+                        <button onClick={() => { exportToCSV('teachers'); setShowExportMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
+                          Listado de Monitores
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={onOpenSupabaseModal}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300 whitespace-nowrap"
+                  >
+                    <Database className="h-3.5 w-3.5 text-emerald-600" />
+                    <span>Supabase</span>
+                  </button>
+
+                  <button
+                    onClick={onOpenUserManagement}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/50 dark:bg-indigo-950/20 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 whitespace-nowrap"
+                  >
+                    <UserCheck className="h-3.5 w-3.5 text-indigo-600" />
+                    <span>Permisos</span>
+                  </button>
+                </>
               )}
 
               <button
-                onClick={() => setIsAuthModalOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/80 px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200"
+                onClick={() => setCurrentTab('profile')}
+                title="Mi Perfil y Preferencias"
+                className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap transition ${
+                  currentTab === 'profile'
+                    ? 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300'
+                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-slate-200'
+                }`}
               >
+                <User className="h-3.5 w-3.5" />
                 <span className="text-[11px] font-bold">
-                  {currentUser ? currentUser.name.split(' ')[0] : 'Entrar'}
+                  {currentUser ? currentUser.name.split(' ')[0] : 'Perfil'}
                 </span>
               </button>
             </div>
@@ -289,56 +308,62 @@ export const Header: React.FC<HeaderProps> = ({
                     <span>{isDarkMode ? 'Modo Claro' : 'Modo Oscuro'}</span>
                   </button>
 
-                  <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
+                  {currentRole !== 'student' && (
+                    <>
+                      <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
 
-                  {/* Sección: Nuevo Registro */}
-                  <div className="px-3 py-1 font-semibold text-emerald-600 dark:text-emerald-400 uppercase text-[10px]">
-                    + Nuevo Registro
-                  </div>
-                  <button
-                    onClick={() => { setShowMobileMenu(false); onOpenRecordPayment(); }}
-                    className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 flex items-center gap-2"
-                  >
-                    <span>💳</span>
-                    <span className="font-medium">Registrar Pago / Cuota</span>
-                  </button>
-                  <button
-                    onClick={() => { setShowMobileMenu(false); onOpenAddStudent(); }}
-                    className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 flex items-center gap-2"
-                  >
-                    <span>👤</span>
-                    <span className="font-medium">Inscribir Alumno</span>
-                  </button>
-                  <button
-                    onClick={() => { setShowMobileMenu(false); onOpenAddSession(); }}
-                    className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 flex items-center gap-2"
-                  >
-                    <span>📅</span>
-                    <span className="font-medium">Anotar Clase Impartida</span>
-                  </button>
-                  <button
-                    onClick={() => { setShowMobileMenu(false); onOpenAddExpense(); }}
-                    className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 flex items-center gap-2"
-                  >
-                    <span>🧾</span>
-                    <span className="font-medium">Registrar Gasto del Centro</span>
-                  </button>
-                  <button
-                    onClick={() => { setShowMobileMenu(false); onOpenAddTeacher(); }}
-                    className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 flex items-center gap-2"
-                  >
-                    <span>🎓</span>
-                    <span className="font-medium">Alta de Monitor</span>
-                  </button>
+                      {/* Sección: Nuevo Registro */}
+                      <div className="px-3 py-1 font-semibold text-emerald-600 dark:text-emerald-400 uppercase text-[10px]">
+                        + Nuevo Registro
+                      </div>
+                      <button
+                        onClick={() => { setShowMobileMenu(false); onOpenRecordPayment(); }}
+                        className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 flex items-center gap-2"
+                      >
+                        <span>💳</span>
+                        <span className="font-medium">Registrar Pago / Cuota</span>
+                      </button>
+                      <button
+                        onClick={() => { setShowMobileMenu(false); onOpenAddStudent(); }}
+                        className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 flex items-center gap-2"
+                      >
+                        <span>👤</span>
+                        <span className="font-medium">Inscribir Alumno</span>
+                      </button>
+                      <button
+                        onClick={() => { setShowMobileMenu(false); onOpenAddSession(); }}
+                        className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 flex items-center gap-2"
+                      >
+                        <span>📅</span>
+                        <span className="font-medium">Anotar Clase Impartida</span>
+                      </button>
+                    </>
+                  )}
 
                   {currentRole === 'admin' && (
-                    <button
-                      onClick={() => { setShowMobileMenu(false); onOpenUserManagement(); }}
-                      className="w-full text-left rounded-lg px-3 py-2 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 flex items-center gap-2 font-semibold"
-                    >
-                      <span>🛡️</span>
-                      <span>Alta de Usuario & Acceso</span>
-                    </button>
+                    <>
+                      <button
+                        onClick={() => { setShowMobileMenu(false); onOpenAddExpense(); }}
+                        className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 flex items-center gap-2"
+                      >
+                        <span>🧾</span>
+                        <span className="font-medium">Registrar Gasto del Centro</span>
+                      </button>
+                      <button
+                        onClick={() => { setShowMobileMenu(false); onOpenAddTeacher(); }}
+                        className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 flex items-center gap-2"
+                      >
+                        <span>🎓</span>
+                        <span className="font-medium">Alta de Monitor</span>
+                      </button>
+                      <button
+                        onClick={() => { setShowMobileMenu(false); onOpenUserManagement(); }}
+                        className="w-full text-left rounded-lg px-3 py-2 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 flex items-center gap-2 font-semibold"
+                      >
+                        <span>🛡️</span>
+                        <span>Alta de Usuario & Acceso</span>
+                      </button>
+                    </>
                   )}
 
                   <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
@@ -354,81 +379,207 @@ export const Header: React.FC<HeaderProps> = ({
                     <span>👤</span>
                     <span>{currentUser ? `Conectado: ${currentUser.name.split(' ')[0]}` : 'Acceder con Google'}</span>
                   </button>
-                  <button
-                    onClick={() => { onOpenSupabaseModal(); setShowMobileMenu(false); }}
-                    className="w-full text-left rounded-lg px-3 py-2 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-slate-800 flex items-center gap-2"
-                  >
-                    <Database className="h-3.5 w-3.5" />
-                    <span>Supabase Cloud</span>
-                  </button>
                   {currentRole === 'admin' && (
-                    <button
-                      onClick={() => { onOpenUserManagement(); setShowMobileMenu(false); }}
-                      className="w-full text-left rounded-lg px-3 py-2 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-slate-800 flex items-center gap-2"
-                    >
-                      <UserCheck className="h-3.5 w-3.5" />
-                      <span>Usuarios & Permisos</span>
-                    </button>
+                    <>
+                      <button
+                        onClick={() => { onOpenSupabaseModal(); setShowMobileMenu(false); }}
+                        className="w-full text-left rounded-lg px-3 py-2 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-slate-800 flex items-center gap-2"
+                      >
+                        <Database className="h-3.5 w-3.5" />
+                        <span>Supabase Cloud</span>
+                      </button>
+                      <button
+                        onClick={() => { onOpenUserManagement(); setShowMobileMenu(false); }}
+                        className="w-full text-left rounded-lg px-3 py-2 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-slate-800 flex items-center gap-2"
+                      >
+                        <UserCheck className="h-3.5 w-3.5" />
+                        <span>Usuarios & Permisos</span>
+                      </button>
+
+                      <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
+
+                      {/* Sección: Exportar Datos */}
+                      <div className="px-3 py-1 font-semibold text-slate-400 uppercase text-[10px]">
+                        Exportar Datos
+                      </div>
+                      <button onClick={() => { exportToCSV('payments'); setShowMobileMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
+                        Pagos del Mes ({selectedPeriod})
+                      </button>
+                      <button onClick={() => { exportToCSV('students'); setShowMobileMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
+                        Censo de Alumnos
+                      </button>
+                      <button onClick={() => { exportToCSV('expenses'); setShowMobileMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
+                        Gastos del Centro
+                      </button>
+                      <button onClick={() => { exportToCSV('teachers'); setShowMobileMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
+                        Listado de Monitores
+                      </button>
+
+                      <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
+
+                      {/* Restablecer datos */}
+                      <button
+                        onClick={() => {
+                          setShowMobileMenu(false);
+                          if (window.confirm('¿Restablecer los datos de ejemplo iniciales de Triskell?')) {
+                            resetToInitialData();
+                          }
+                        }}
+                        className="w-full text-left rounded-lg px-3 py-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-slate-800 flex items-center gap-2"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        <span>Restablecer datos</span>
+                      </button>
+                    </>
                   )}
-
-                  <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
-
-                  {/* Sección: Exportar Datos */}
-                  <div className="px-3 py-1 font-semibold text-slate-400 uppercase text-[10px]">
-                    Exportar Datos
-                  </div>
-                  <button onClick={() => { exportToCSV('payments'); setShowMobileMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                    Pagos del Mes ({selectedPeriod})
-                  </button>
-                  <button onClick={() => { exportToCSV('students'); setShowMobileMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                    Censo de Alumnos
-                  </button>
-                  <button onClick={() => { exportToCSV('expenses'); setShowMobileMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                    Gastos del Centro
-                  </button>
-                  <button onClick={() => { exportToCSV('teachers'); setShowMobileMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                    Listado de Monitores
-                  </button>
-
-                  <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
-
-                  {/* Restablecer datos */}
-                  <button
-                    onClick={() => {
-                      setShowMobileMenu(false);
-                      if (window.confirm('¿Restablecer los datos de ejemplo iniciales de Triskell?')) {
-                        resetToInitialData();
-                      }
-                    }}
-                    className="w-full text-left rounded-lg px-3 py-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-slate-800 flex items-center gap-2"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                    <span>Restablecer datos</span>
-                  </button>
                 </div>
               )}
             </div>
 
-            {/* Reset data (Solo escritorio xl) */}
-            <button
-              onClick={() => {
-                if (window.confirm('¿Restablecer los datos de ejemplo iniciales de Triskell?')) {
-                  resetToInitialData();
-                }
-              }}
-              title="Restablecer datos"
-              className="hidden xl:block rounded-xl border border-slate-200 dark:border-slate-800 p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-            >
-              <RotateCcw className="h-4 w-4" />
-            </button>
+            {/* Reset data (Solo escritorio xl y admin) */}
+            {currentRole === 'admin' && (
+              <button
+                onClick={() => {
+                  if (window.confirm('¿Restablecer los datos de ejemplo iniciales de Triskell?')) {
+                    resetToInitialData();
+                  }
+                }}
+                title="Restablecer datos"
+                className="hidden xl:block rounded-xl border border-slate-200 dark:border-slate-800 p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <RotateCcw className="h-4 w-4" />
+              </button>
+            )}
 
           </div>
           
         </div>
 
-        {/* Pestañas de Navegación Dinámicas según Rol (Ocultas en móvil, usa el menú inferior o pestañas existentes) */}
-        <nav className="hidden md:flex space-x-1 sm:space-x-4 border-t border-slate-200/60 dark:border-slate-800/60 py-2.5 overflow-x-auto text-xs font-semibold">
-          {/* ... tus pestañas actuales sin cambios ... */}
+        {/* Pestañas de Navegación Dinámicas según Rol (Ocultas en móvil, usa el menú inferior) */}
+        <nav className="hidden md:flex items-center gap-1.5 border-t border-slate-200/60 dark:border-slate-800/60 py-2 overflow-x-auto no-scrollbar text-xs font-semibold">
+          {currentRole === 'admin' && (
+            <>
+              {[
+                { id: 'dashboard', label: 'Portal del Administrador', icon: LayoutDashboard },
+                { id: 'calendar', label: 'Calendario', icon: Calendar },
+                { id: 'payments', label: 'Cuotas y Cobros', icon: CreditCard },
+                { id: 'teachers', label: 'Monitores', icon: GraduationCap },
+                { id: 'activities', label: 'Clases/Taller', icon: Sparkles },
+                { id: 'expenses', label: 'Gastos', icon: Receipt },
+                { id: 'admin-config', label: 'Configuración', icon: Settings },
+                { id: 'teacher-portal', label: 'Portal Monitor', icon: Building },
+                { id: 'student-portal', label: 'Portal Alumno', icon: BookOpen },
+                { id: 'profile', label: 'Perfil', icon: User }
+              ].map(tab => {
+                const Icon = tab.icon;
+                const isActive = currentTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setCurrentTab(tab.id)}
+                    className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 whitespace-nowrap shrink-0 transition ${
+                      isActive
+                        ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </>
+          )}
+
+          {currentRole === 'teacher' && (
+            <>
+              {[
+                { id: 'teacher-portal', label: 'Portal', icon: GraduationCap },
+                { id: 'calendar', label: 'Calendario', icon: Calendar },
+                { id: 'activities', label: 'Clase/Taller', icon: Sparkles },
+                { id: 'teacher-payouts', label: 'Mis liquidaciones', icon: DollarSign },
+                { id: 'profile', label: 'Perfil', icon: User }
+              ].map(tab => {
+                const Icon = tab.icon;
+                const isActive = currentTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setCurrentTab(tab.id)}
+                    className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 whitespace-nowrap shrink-0 transition ${
+                      isActive
+                        ? 'bg-indigo-600 text-white shadow-xs font-bold'
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </>
+          )}
+
+          {currentRole === 'student' && (
+            <>
+              {[
+                { id: 'student-portal', label: 'Portal', icon: BookOpen },
+                { id: 'calendar', label: 'Calendario', icon: Calendar },
+                { id: 'activities', label: 'Clases/Taller', icon: Sparkles },
+                { id: 'profile', label: 'Perfil', icon: User }
+              ].map(tab => {
+                const Icon = tab.icon;
+                const isActive = currentTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setCurrentTab(tab.id)}
+                    className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 whitespace-nowrap shrink-0 transition ${
+                      isActive
+                        ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </>
+          )}
+
+          {currentRole === 'teacher_student' && (
+            <>
+              {[
+                { id: 'teacher-portal', label: 'Portal Monitor', icon: GraduationCap },
+                { id: 'student-portal', label: 'Portal Alumno', icon: BookOpen },
+                { id: 'calendar', label: 'Calendario', icon: Calendar },
+                { id: 'activities', label: 'Clases/Taller', icon: Sparkles },
+                { id: 'profile', label: 'Perfil', icon: User }
+              ].map(tab => {
+                const Icon = tab.icon;
+                const isActive = currentTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setCurrentTab(tab.id)}
+                    className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 whitespace-nowrap shrink-0 transition ${
+                      isActive
+                        ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </>
+          )}
         </nav>
       </div>
     </header>

@@ -1,7 +1,8 @@
 export type PaymentMethod = 'cash' | 'transfer' | 'bizum' | 'card';
 export type PaymentStatus = 'paid' | 'pending' | 'overdue' | 'cancelled';
 export type TeacherPaymentScheme = 'per_class' | 'monthly_fixed' | 'revenue_share';
-export type StudentStatus = 'active' | 'inactive' | 'trial';
+export type StudentStatus = 'active' | 'inactive' | 'trial' | 'pending_validation';
+export type StudentValidationStatus = 'pending' | 'validated' | 'rejected';
 export type ExpenseCategory = 'rent' | 'utilities' | 'materials' | 'cleaning' | 'insurance' | 'marketing' | 'other';
 export type UserRole = 'admin' | 'teacher' | 'student' | 'teacher_student';
 
@@ -67,6 +68,10 @@ export interface Student {
   email: string;
   phone: string;
   status: StudentStatus;
+  validationStatus?: StudentValidationStatus;
+  profileId?: string;
+  registeredBy?: string;
+  validatedAt?: string;
   registeredAt: string;
   activities: StudentActivityEnrollment[];
   notes?: string;

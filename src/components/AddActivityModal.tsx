@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Activity } from '../types';
 import { X, Check, Smartphone } from 'lucide-react';
@@ -8,13 +8,15 @@ interface AddActivityModalProps {
   onClose: () => void;
   activityToEdit?: Activity | null;
   defaultTeacherId?: string;
+  lockTeacherSelection?: boolean;
 }
 
 export const AddActivityModal: React.FC<AddActivityModalProps> = ({
   isOpen,
   onClose,
   activityToEdit,
-  defaultTeacherId
+  defaultTeacherId,
+  lockTeacherSelection = false
 }) => {
   const { teachers, addActivity, updateActivity } = useApp();
 
@@ -47,6 +49,25 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
   const [scheduleText, setScheduleText] = useState(
     activityToEdit?.schedule.join(', ') || 'Martes 18:30, Jueves 18:30'
   );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const resolvedTeacherId = activityToEdit?.teacherId || defaultTeacherId || teachers[0]?.id || '';
+    const resolvedTeacher = teachers.find(t => t.id === resolvedTeacherId);
+
+    setName(activityToEdit?.name || '');
+    setDescription(activityToEdit?.description || '');
+    setTeacherId(resolvedTeacherId);
+    setCategory(activityToEdit?.category || 'Yoga');
+    setBillingMode(activityToEdit?.billingMode || 'monthly');
+    setDefaultPriceMonthly(activityToEdit?.defaultPriceMonthly ?? 50);
+    setDefaultPricePerClass(activityToEdit?.defaultPricePerClass ?? 10);
+    setBizumEnabled(activityToEdit?.bizum_enabled ?? true);
+    setBizumPhone(activityToEdit?.bizum_phone || resolvedTeacher?.phone || '+34 600 000 000');
+    setBizumConcept(activityToEdit?.bizum_concept || activityToEdit?.name || '');
+    setRoom(activityToEdit?.room || 'Sala Principal');
+    setScheduleText(activityToEdit?.schedule.join(', ') || 'Martes 18:30, Jueves 18:30');
+  }, [isOpen, activityToEdit, defaultTeacherId, teachers]);
 
   if (!isOpen) return null;
 
@@ -135,12 +156,13 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                 </label>
                 <select
                   value={teacherId}
+                  disabled={lockTeacherSelection}
                   onChange={e => {
                     setTeacherId(e.target.value);
                     const t = teachers.find(item => item.id === e.target.value);
                     if (t?.phone && !bizumPhone) setBizumPhone(t.phone);
                   }}
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500 font-semibold"
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500 font-semibold disabled:opacity-75 disabled:cursor-not-allowed"
                 >
                   {teachers.map(t => (
                     <option key={t.id} value={t.id}>
