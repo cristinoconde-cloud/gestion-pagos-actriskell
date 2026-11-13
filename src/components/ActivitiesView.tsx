@@ -103,16 +103,25 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   }, [activities, isAdmin, isTeacher, isStudent, isUnion, unionFilter, currentTeacher?.id]);
 
   // Vista dedicada para el Monitor ("Mis talleres & Alumnos")
+  //if (isTeacher) {
+    //return (
+      //<TeacherWorkshopsSection
+        //onOpenAddActivity={() => onOpenAddActivity()}
+        //onOpenAddStudent={onOpenAddStudent}
+        //onOpenEnrollStudent={onOpenEnrollStudent}
+      ///>
+    //);
+  //}
+  // ✅ CÓDIGO CORREGIDO
   if (isTeacher) {
     return (
       <TeacherWorkshopsSection
-        onOpenAddActivity={() => onOpenAddActivity()}
+        onOpenAddActivity={(act) => onOpenAddActivity(act)} // <--- Pasa el taller correctamente
         onOpenAddStudent={onOpenAddStudent}
         onOpenEnrollStudent={onOpenEnrollStudent}
       />
     );
   }
-
   const headerSubtitle = useMemo(() => {
     if (isAdmin) return 'Horarios, salas, precios, recaudación y asignación de monitores';
     if (isTeacher) return 'Clases y talleres asignados a tu monitoría';
