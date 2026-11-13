@@ -15,6 +15,7 @@ import {
 } from '../types';
 import {
   supabase,
+  createIsolatedAuthClient,
   mapDbTeacherToTeacher,
   mapTeacherToDb,
   mapDbActivityToActivity,
@@ -863,77 +864,166 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     clearDbError();
     try {
       const emailNorm = params.email.toLowerCase().trim();
-      const tempPassword = params.password || `Triskell${Math.floor(1000 + Math.random() * 9000)}!`;
+      const fullNameClean = params.fullName.trim();
+      const tempPassword = (params.password || `Triskell${Math.floor(1000 + Math.random() * 9000)}!`).trim();
 
-      // 1. Crear en auth.users con Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      if (!emailNorm || !emailNorm.includes('@')) {
+        return { success: false, error: 'El correo electrónico no es válido.' };
+      }
+      if (tempPassword.length < 6) {
+        return { success: false, error: 'La contraseña debe tener al menos 6 caracteres para Supabase Auth.' };
+      }
+
+      // 0. Verificar sesión JWT real del Administrador para evitar fallos RLS posteriores
+      const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+      if (sessionErr || !sessionData?.session?.access_token) {
+        return {
+          success: false,
+          error: 'No hay una sesión real activa de Administrador en Supabase Auth. Inicia sesión con Google o correo/contraseña antes de dar de alta usuarios.'
+        };
+      }
+
+      // 1. Crear PRIMERO en auth.users con cliente aislado (no pisa la sesión del Admin)
+      const isolatedAuth = createIsolatedAuthClient();
+      const { data: authData, error: authError } = await isolatedAuth.auth.signUp({
         email: emailNorm,
         password: tempPassword,
         options: {
           data: {
-            full_name: params.fullName.trim(),
+            full_name: fullNameClean,
             role: params.role
           }
         }
       });
 
-      let linkedTeacherId = params.teacherId;
-      let linkedStudentId = params.studentId;
+      if (authError) {
+        const msg = authError.message || 'Error en Supabase Auth al registrar el usuario.';
+        if (msg.toLowerCase().includes('signups not allowed')) {
+          return {
+            success: false,
+            error: 'Supabase Auth tiene desactivado el registro (Signups not allowed). Activa "Allow new users to sign up" en Supabase Auth o usa una Edge Function con service_role.'
+          };
+        }
+        return { success: false, error: `Error en Supabase Auth: ${msg}` };
+      }
 
-      // 2. Si se solicitó crear ficha de monitor automática
-      if (params.createTeacherProfile && !linkedTeacherId) {
-        const { data: newTeacher } = await supabase
+      const newAuthUserId = authData?.user?.id;
+      if (!newAuthUserId) {
+        return {
+          success: false,
+          error: 'Supabase Auth no devolvió ningún ID de usuario (auth.users). Operación abortada.'
+        };
+      }
+
+      // En Supabase, si el email ya existe y Confirm Email está activo, devuelve identities = []
+      if (Array.isArray(authData.user?.identities) && authData.user.identities.length === 0) {
+        return {
+          success: false,
+          error: `El correo "${emailNorm}" ya existe en Supabase Auth (auth.users).`
+        };
+      }
+
+      let linkedTeacherId = params.teacherId || null;
+      let linkedStudentId = params.studentId || null;
+
+      // 2. Si se solicitó crear ficha de monitor automática (o reutilizar por email)
+      if ((params.role === 'teacher' || params.role === 'teacher_student') && params.createTeacherProfile && !linkedTeacherId) {
+        const { data: existingTeacher, error: findTeacherErr } = await supabase
           .from('teachers')
-          .insert([{
-            name: params.fullName.trim(),
-            email: emailNorm,
-            payment_scheme: 'per_class',
-            rate_per_class: 25,
-            fixed_monthly_rate: 0,
-            revenue_share_percent: 60,
-            preferred_payment_method: 'cash',
-            collection_type: 'personal',
-            active: true
-          }])
-          .select()
-          .single();
-        if (newTeacher) linkedTeacherId = newTeacher.id;
+          .select('id')
+          .ilike('email', emailNorm)
+          .maybeSingle();
+
+        if (findTeacherErr) {
+          return { success: false, error: `Usuario creado en Auth, pero error consultando monitores: ${findTeacherErr.message}` };
+        }
+
+        if (existingTeacher?.id) {
+          linkedTeacherId = existingTeacher.id;
+        } else {
+          const { data: newTeacher, error: teacherErr } = await supabase
+            .from('teachers')
+            .insert([{
+              name: fullNameClean,
+              email: emailNorm,
+              payment_scheme: 'per_class',
+              rate_per_class: 25,
+              fixed_monthly_rate: 0,
+              revenue_share_percent: 60,
+              preferred_payment_method: 'cash',
+              collection_type: 'personal',
+              active: true
+            }])
+            .select('id')
+            .single();
+
+          if (teacherErr) {
+            return { success: false, error: `Usuario creado en Auth (${newAuthUserId}), pero error al crear ficha de Monitor: ${teacherErr.message}` };
+          }
+          linkedTeacherId = newTeacher.id;
+        }
       }
 
-      // 3. Si se solicitó crear ficha de alumno automática
-      if (params.createStudentProfile && !linkedStudentId) {
-        const { data: newStudent } = await supabase
+      // 3. Si se solicitó crear ficha de alumno automática (o reutilizar por email)
+      if ((params.role === 'student' || params.role === 'teacher_student') && params.createStudentProfile && !linkedStudentId) {
+        const { data: existingStudent, error: findStudentErr } = await supabase
           .from('students')
-          .insert([{
-            name: params.fullName.trim(),
-            email: emailNorm,
-            status: 'active',
-            registered_at: new Date().toISOString().split('T')[0]
-          }])
-          .select()
-          .single();
-        if (newStudent) linkedStudentId = newStudent.id;
+          .select('id')
+          .ilike('email', emailNorm)
+          .maybeSingle();
+
+        if (findStudentErr) {
+          return { success: false, error: `Usuario creado en Auth, pero error consultando alumnos: ${findStudentErr.message}` };
+        }
+
+        if (existingStudent?.id) {
+          linkedStudentId = existingStudent.id;
+        } else {
+          const { data: newStudent, error: studentErr } = await supabase
+            .from('students')
+            .insert([{
+              name: fullNameClean,
+              email: emailNorm,
+              status: 'active',
+              registered_at: new Date().toISOString().split('T')[0]
+            }])
+            .select('id')
+            .single();
+
+          if (studentErr) {
+            return { success: false, error: `Usuario creado en Auth (${newAuthUserId}), pero error al crear ficha de Alumno: ${studentErr.message}` };
+          }
+          linkedStudentId = newStudent.id;
+        }
       }
 
-      // 4. Registrar o actualizar en la tabla public.profiles
-      const userId = authData.user?.id;
-      if (userId) {
-        await supabase.from('profiles').upsert({
-          id: userId,
-          email: emailNorm,
-          full_name: params.fullName.trim(),
-          role: params.role,
-          teacher_id: linkedTeacherId || null,
-          student_id: linkedStudentId || null
-        });
+      // 4. Registrar o actualizar en public.profiles con el ID exacto de auth.users
+      const { error: profileErr } = await supabase
+        .from('profiles')
+        .upsert(
+          {
+            id: newAuthUserId,
+            email: emailNorm,
+            full_name: fullNameClean,
+            role: params.role,
+            teacher_id: linkedTeacherId,
+            student_id: linkedStudentId
+          },
+          { onConflict: 'id' }
+        );
+
+      if (profileErr) {
+        return {
+          success: false,
+          error: `Usuario creado en Auth (${newAuthUserId}), pero error al vincular public.profiles: ${profileErr.message}`
+        };
       }
 
       await refreshFromSupabase();
       return { success: true, tempPassword };
-
     } catch (err: any) {
       console.error('Error creating user by administrator:', err);
-      return { success: false, error: err.message || 'Error al registrar el usuario' };
+      return { success: false, error: err.message || 'Error inesperado al registrar el usuario' };
     }
   };
 

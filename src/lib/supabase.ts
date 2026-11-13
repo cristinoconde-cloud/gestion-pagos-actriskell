@@ -75,6 +75,23 @@ export function getSupabaseClient(customConfig?: SupabaseConfig): SupabaseClient
 // Cliente exportado para uso directo
 export const supabase = getSupabaseClient();
 
+// Cliente aislado sin persistencia para altas de usuarios por el Administrador
+// Evita sobrescribir el JWT y la sesión del Administrador en localStorage al llamar a auth.signUp()
+export function createIsolatedAuthClient(): SupabaseClient {
+  const cfg = getStoredSupabaseConfig();
+  const url = cfg.url || DEFAULT_SUPABASE_CONFIG.url;
+  const anonKey = cfg.anonKey || DEFAULT_SUPABASE_CONFIG.anonKey;
+
+  return createClient(url, anonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      storageKey: `triskell-ephemeral-auth-${Date.now()}`
+    }
+  });
+}
+
 // Verificación de conexión
 export async function testSupabaseConnection(url: string, anonKey: string): Promise<{
   success: boolean;
