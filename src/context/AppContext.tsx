@@ -134,6 +134,7 @@ interface AppContextType {
   updateStudent: (id: string, updates: Partial<Student>) => Promise<void>;
   deleteStudent: (id: string) => Promise<void>;
   enrollStudentInActivity: (studentId: string, activityId: string, customPrice?: number) => Promise<{ success: boolean; error?: string }>;
+  unenrollStudentFromActivity: (studentId: string, activityId: string) => Promise<{ success: boolean; error?: string }>;
   enrollUserFromProfile: (params: {
     profile: {
       id: string;
@@ -1397,6 +1398,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true };
   };
 
+  const unenrollStudentFromActivity = async (
+    studentId: string,
+    activityId: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    clearDbError();
+    try {
+      const { error } = await supabase
+        .from('student_enrollments')
+        .delete()
+        .eq('student_id', studentId)
+        .eq('activity_id', activityId);
+
+      if (error) {
+        handleSupabaseError('Quitar alumno del taller', error);
+        return { success: false, error: error.message };
+      }
+
+      setStudents(prev =>
+        prev.map(s =>
+          s.id === studentId
+            ? { ...s, activities: s.activities.filter(a => a.activityId !== activityId) }
+            : s
+        )
+      );
+      await refreshFromSupabase();
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || 'Error al quitar el alumno del taller.';
+      handleSupabaseError('Quitar alumno del taller', err);
+      return { success: false, error: msg };
+    }
+  };
+
   const enrollUserFromProfile: AppContextType['enrollUserFromProfile'] = async ({
     profile,
     activityId,
@@ -1675,6 +1709,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deletePayment = async (id: string) => {
     clearDbError();
+    try {
+      await supabase
+        .from('session_attendances')
+        .update({ payment_id: null, paid: false, paid_amount: 0 })
+        .eq('payment_id', id);
+    } catch {
+      // Ignorar si no existe vínculo o la política aplica solo a pagos
+    }
     const { error } = await supabase.from('payments').delete().eq('id', id);
     if (error) {
       handleSupabaseError('Eliminar pago', error);
@@ -2129,6 +2171,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateStudent,
         deleteStudent,
         enrollStudentInActivity,
+        unenrollStudentFromActivity,
         enrollUserFromProfile,
         quickCreateAndEnrollStudent,
         validatePendingStudent,

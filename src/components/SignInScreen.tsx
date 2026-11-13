@@ -357,21 +357,10 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1">
+              <div className="mb-1">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
                   Contraseña
                 </label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsResetMode(true);
-                    setErrorMessage(null);
-                    setResetMessage(null);
-                  }}
-                  className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
-                >
-                  ¿Cambiar o recuperar contraseña?
-                </button>
               </div>
               <div className="relative">
                 <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -389,6 +378,19 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
                   className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              <div className="flex justify-end mt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsResetMode(true);
+                    setErrorMessage(null);
+                    setResetMessage(null);
+                  }}
+                  className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
+                >
+                  ¿Cambiar o recuperar contraseña?
                 </button>
               </div>
             </div>

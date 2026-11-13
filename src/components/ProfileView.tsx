@@ -21,7 +21,8 @@ import {
   AlertCircle,
   KeyRound,
   Eye,
-  EyeOff
+  EyeOff,
+  ChevronDown
 } from 'lucide-react';
 
 interface ProfileViewProps {
@@ -126,6 +127,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [showPassChars, setShowPassChars] = useState(false);
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+
+  // En móvil ambos bloques inician colapsados; en escritorio (lg+) siempre visibles
+  const [isPersonalOpenMobile, setIsPersonalOpenMobile] = useState(false);
+  const [isSecurityOpenMobile, setIsSecurityOpenMobile] = useState(false);
 
   // Sincronizar campos cuando cambia usuario/rol/datos cargados
   useEffect(() => {
@@ -542,25 +547,40 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         )}
       </div>
 
-      {/* Dos cuadros principales siempre visibles: Datos Personales y Foto de Perfil + Preferencias Personales y Seguridad */}
+      {/* Dos cuadros principales: colapsables en móvil y siempre visibles lado a lado en escritorio */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
       {/* Formulario Unificado: Datos Personales, Foto/Avatar y Ajustes del Rol */}
       <form
         onSubmit={handleSaveProfile}
-        className="lg:col-span-7 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-xs space-y-5"
+        className="lg:col-span-7 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-xs"
       >
-        <div className="border-b border-slate-100 dark:border-slate-800 pb-3 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setIsPersonalOpenMobile(v => !v)}
+          aria-expanded={isPersonalOpenMobile}
+          className={`w-full text-left flex items-center justify-between gap-3 lg:cursor-default ${
+            isPersonalOpenMobile ? 'border-b border-slate-100 dark:border-slate-800 pb-3' : ''
+          } lg:border-b lg:border-slate-100 lg:dark:border-slate-800 lg:pb-3`}
+        >
           <div>
             <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <Camera className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              <Camera className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <span>Datos Personales y Foto de Perfil</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               Actualiza tu imagen, datos de contacto y configuración de perfil
             </p>
           </div>
-        </div>
+          <span className="lg:hidden rounded-lg p-1.5 text-slate-400 bg-slate-100 dark:bg-slate-800 shrink-0">
+            <ChevronDown
+              className={`h-4 w-4 transition-transform duration-200 ${
+                isPersonalOpenMobile ? 'rotate-180' : ''
+              }`}
+            />
+          </span>
+        </button>
 
+        <div className={`${isPersonalOpenMobile ? 'block' : 'hidden'} lg:block pt-5 space-y-5`}>
         {saveMessage && (
           <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/30 p-3 text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
             <Check className="h-4 w-4 text-emerald-600 shrink-0" />
@@ -737,19 +757,38 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <span>Guardar Cambios de Perfil</span>
           </button>
         </div>
+        </div>
       </form>
 
       {/* Preferencias Personales & Seguridad */}
-      <div className="lg:col-span-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-xs space-y-4">
-        <div className="border-b border-slate-100 dark:border-slate-800 pb-3">
-          <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-            <span>Preferencias Personales y Seguridad</span>
-          </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Apariencia de la interfaz y acceso rápido en este dispositivo
-          </p>
-        </div>
+      <div className="lg:col-span-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-xs">
+        <button
+          type="button"
+          onClick={() => setIsSecurityOpenMobile(v => !v)}
+          aria-expanded={isSecurityOpenMobile}
+          className={`w-full text-left flex items-center justify-between gap-3 lg:cursor-default ${
+            isSecurityOpenMobile ? 'border-b border-slate-100 dark:border-slate-800 pb-3' : ''
+          } lg:border-b lg:border-slate-100 lg:dark:border-slate-800 lg:pb-3`}
+        >
+          <div>
+            <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span>Preferencias Personales y Seguridad</span>
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Apariencia de la interfaz y acceso rápido en este dispositivo
+            </p>
+          </div>
+          <span className="lg:hidden rounded-lg p-1.5 text-slate-400 bg-slate-100 dark:bg-slate-800 shrink-0">
+            <ChevronDown
+              className={`h-4 w-4 transition-transform duration-200 ${
+                isSecurityOpenMobile ? 'rotate-180' : ''
+              }`}
+            />
+          </span>
+        </button>
+
+        <div className={`${isSecurityOpenMobile ? 'block' : 'hidden'} lg:block pt-4 space-y-4`}>
 
         {/* Apariencia: Modo Claro / Oscuro */}
         <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5">
@@ -947,6 +986,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </button>
           </div>
         )}
+        </div>
       </div>
       </div>
     </div>

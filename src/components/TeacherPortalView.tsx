@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { Activity, PaymentMethod } from '../types';
 import { ProfileView } from './ProfileView';
@@ -12,6 +12,7 @@ import {
   Plus,
   UserPlus,
   UserCheck,
+  UserMinus,
   Edit2,
   Check,
   X,
@@ -19,11 +20,101 @@ import {
   Banknote,
   DollarSign,
   AlertCircle,
+  AlertTriangle,
   MessageCircle,
   Camera,
   Layers,
-  ChevronDown
+  ChevronDown,
+  RotateCcw,
+  Trash2
 } from 'lucide-react';
+
+const normalizeTextForSchedule = (raw: string) =>
+  raw
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+const SPANISH_DAY_NAMES = [
+  'domingo',
+  'lunes',
+  'martes',
+  'miercoles',
+  'jueves',
+  'viernes',
+  'sabado'
+];
+
+const SPANISH_DAY_ABBRS = ['dom', 'lun', 'mar', 'mie', 'jue', 'vie', 'sab'];
+
+interface MatchedActivityResult {
+  activity: Activity;
+  matchType: 'live' | 'upcoming_today' | 'earlier_today' | 'fallback';
+}
+
+const findActiveActivityForNow = (
+  activitiesList: Activity[],
+  now: Date = new Date()
+): MatchedActivityResult | null => {
+  if (!activitiesList.length) return null;
+
+  const dayIdx = now.getDay();
+  const fullDay = SPANISH_DAY_NAMES[dayIdx];
+  const abbrDay = SPANISH_DAY_ABBRS[dayIdx];
+  const abbrRegex = new RegExp(`\\b${abbrDay}\\b`, 'i');
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+
+  let bestLive: { activity: Activity; score: number } | null = null;
+  let bestUpcoming: { activity: Activity; delta: number } | null = null;
+  let bestEarlier: { activity: Activity; delta: number } | null = null;
+
+  for (const act of activitiesList) {
+    if (act.active === false) continue;
+    for (const slot of act.schedule || []) {
+      const normalized = normalizeTextForSchedule(slot);
+      const matchesDay = normalized.includes(fullDay) || abbrRegex.test(normalized);
+      if (!matchesDay) continue;
+
+      const timeMatches = Array.from(normalized.matchAll(/(\d{1,2}):(\d{2})/g));
+      if (timeMatches.length === 0) {
+        if (!bestUpcoming) {
+          bestUpcoming = { activity: act, delta: 24 * 60 };
+        }
+        continue;
+      }
+
+      const startMinutes =
+        parseInt(timeMatches[0][1], 10) * 60 + parseInt(timeMatches[0][2], 10);
+      const endMinutes =
+        timeMatches.length >= 2
+          ? parseInt(timeMatches[1][1], 10) * 60 + parseInt(timeMatches[1][2], 10)
+          : startMinutes + 90;
+
+      // En curso ahora (con margen de 15 min antes y 15 min después)
+      if (nowMinutes >= startMinutes - 15 && nowMinutes <= endMinutes + 15) {
+        const distanceFromStart = Math.abs(nowMinutes - startMinutes);
+        if (!bestLive || distanceFromStart < bestLive.score) {
+          bestLive = { activity: act, score: distanceFromStart };
+        }
+      } else if (startMinutes > nowMinutes) {
+        const delta = startMinutes - nowMinutes;
+        if (!bestUpcoming || delta < bestUpcoming.delta) {
+          bestUpcoming = { activity: act, delta };
+        }
+      } else {
+        const delta = nowMinutes - endMinutes;
+        if (!bestEarlier || delta < bestEarlier.delta) {
+          bestEarlier = { activity: act, delta };
+        }
+      }
+    }
+  }
+
+  if (bestLive) return { activity: bestLive.activity, matchType: 'live' };
+  if (bestUpcoming) return { activity: bestUpcoming.activity, matchType: 'upcoming_today' };
+  if (bestEarlier) return { activity: bestEarlier.activity, matchType: 'earlier_today' };
+  return { activity: activitiesList[0], matchType: 'fallback' };
+};
 
 interface TeacherPortalViewProps {
   onOpenAddSession: (teacherId?: string) => void;
@@ -45,11 +136,40 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
   onOpenAddStudent,
   onOpenEnrollStudent
 }) => {
-  const { currentTeacherId, teachers, activities, students } = useApp();
+  const { currentTeacherId, teachers, activities, students, unenrollStudentFromActivity } = useApp();
   const currentTeacher = teachers.find(t => t.id === currentTeacherId) || teachers[0];
   const myActivities = useMemo(() => {
     return activities.filter(a => a.teacherId === currentTeacher?.id);
   }, [activities, currentTeacher?.id]);
+
+  const [pendingRemoval, setPendingRemoval] = useState<{
+    studentId: string;
+    studentName: string;
+    activityId: string;
+    activityName: string;
+  } | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
+  const [workshopFeedback, setWorkshopFeedback] = useState<string | null>(null);
+
+  const handleConfirmRemove = async () => {
+    if (!pendingRemoval) return;
+    setIsRemoving(true);
+    try {
+      const res = await unenrollStudentFromActivity(
+        pendingRemoval.studentId,
+        pendingRemoval.activityId
+      );
+      if (res.success) {
+        setWorkshopFeedback(
+          `Se quitó a ${pendingRemoval.studentName} de "${pendingRemoval.activityName}".`
+        );
+        setTimeout(() => setWorkshopFeedback(null), 3500);
+      }
+      setPendingRemoval(null);
+    } finally {
+      setIsRemoving(false);
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -89,6 +209,13 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
           )}
         </div>
       </div>
+
+      {workshopFeedback && (
+        <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/30 p-3 text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+          <span>{workshopFeedback}</span>
+        </div>
+      )}
 
       {/* Listado de Talleres */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -183,7 +310,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                         const isPending =
                           st.status === 'pending_validation' || st.validationStatus === 'pending';
                         return (
-                          <div key={st.id} className="py-1.5 flex items-center justify-between gap-2 text-xs">
+                          <div key={st.id} className="py-2 flex items-center justify-between gap-2 text-xs">
                             <div className="flex items-center gap-2 min-w-0">
                               <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
                                 {st.name}
@@ -195,9 +322,27 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                 </span>
                               )}
                             </div>
-                            <span className="text-[11px] text-slate-400 shrink-0">
-                              {st.phone || st.email}
-                            </span>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-[11px] text-slate-400 hidden sm:inline">
+                                {st.phone || st.email}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setPendingRemoval({
+                                    studentId: st.id,
+                                    studentName: st.name,
+                                    activityId: act.id,
+                                    activityName: act.name
+                                  })
+                                }
+                                title={`Quitar a ${st.name} del taller`}
+                                className="inline-flex items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/20 px-2 py-1 text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition whitespace-nowrap"
+                              >
+                                <UserMinus className="h-3 w-3" />
+                                <span>Quitar</span>
+                              </button>
+                            </div>
                           </div>
                         );
                       })}
@@ -209,6 +354,47 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
           })
         )}
       </div>
+
+      {/* Modal de confirmación para quitar alumno del taller */}
+      {pendingRemoval && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 shrink-0">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Quitar alumno del taller
+                </h4>
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                  ¿Seguro que quieres dar de baja a <strong>{pendingRemoval.studentName}</strong> del taller{' '}
+                  <strong>{pendingRemoval.activityName}</strong>? Su ficha general de socio no se eliminará.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isRemoving}
+                onClick={() => setPendingRemoval(null)}
+                className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isRemoving}
+                onClick={handleConfirmRemove}
+                className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 transition disabled:opacity-60"
+              >
+                {isRemoving ? 'Quitando...' : 'Sí, quitar del taller'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -232,6 +418,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     sessions,
     periodPayments,
     recordClassPayment,
+    deletePayment,
+    unenrollStudentFromActivity,
     addClassSession,
     currentRole
   } = useApp();
@@ -255,8 +443,39 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   // Pestañas internas del Portal del Monitor
   const [activeTab, setActiveTab] = useState<'class_control' | 'workshops' | 'payout' | 'profile'>('class_control');
 
+  // Auto-detección de clase activa según día y hora actual
+  const autoDetectedMatch = useMemo(
+    () => findActiveActivityForNow(myActivities),
+    [myActivities]
+  );
+
   // Estado del Módulo "Control de Clase & Cobros"
-  const [selectedClassActivityId, setSelectedClassActivityId] = useState<string>(myActivities[0]?.id || '');
+  const [selectedClassActivityId, setSelectedClassActivityId] = useState<string>(
+    () => autoDetectedMatch?.activity.id || myActivities[0]?.id || ''
+  );
+  const manualClassChoiceRef = useRef(false);
+  const lastTeacherForAutoSelectRef = useRef<string | undefined>(currentTeacher?.id);
+
+  useEffect(() => {
+    if (lastTeacherForAutoSelectRef.current !== currentTeacher?.id) {
+      lastTeacherForAutoSelectRef.current = currentTeacher?.id;
+      manualClassChoiceRef.current = false;
+    }
+
+    if (myActivities.length === 0) {
+      setSelectedClassActivityId('');
+      return;
+    }
+
+    const existsInMyActivities = myActivities.some(a => a.id === selectedClassActivityId);
+    if (!manualClassChoiceRef.current || !existsInMyActivities) {
+      const targetId = autoDetectedMatch?.activity.id || myActivities[0]?.id || '';
+      if (targetId && targetId !== selectedClassActivityId) {
+        setSelectedClassActivityId(targetId);
+      }
+    }
+  }, [myActivities, currentTeacher?.id, autoDetectedMatch, selectedClassActivityId]);
+
   const [sessionDate, setSessionDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [sessionTopic, setSessionTopic] = useState<string>('');
   const [sessionDuration, setSessionDuration] = useState<number>(75);
@@ -269,7 +488,26 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const [partialAmountMap, setPartialAmountMap] = useState<Record<string, number>>({});
   const [paymentMethodMap, setPaymentMethodMap] = useState<Record<string, PaymentMethod>>({});
 
-  // Feedback de guardado
+  // Modal de confirmación para anular/desmarcar pago o quitar alumno de un taller
+  const [confirmDialog, setConfirmDialog] = useState<
+    | {
+        type: 'delete_payment';
+        paymentId: string;
+        studentName: string;
+        amount: number;
+      }
+    | {
+        type: 'remove_student';
+        studentId: string;
+        studentName: string;
+        activityId: string;
+        activityName: string;
+      }
+    | null
+  >(null);
+  const [isConfirmBusy, setIsConfirmBusy] = useState(false);
+
+  // Feedback de guardado / acciones
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
   // Actividad seleccionada en la sesión activa
@@ -302,14 +540,66 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     const isMonthly = activeClassActivity.billingMode === 'monthly';
 
     if (isMonthly) {
-      return periodPayments.find(
-        p => p.studentId === studentId && p.activityId === activeClassActivity.id && p.periodMonth === selectedPeriod
+      return (
+        periodPayments.find(
+          p =>
+            p.studentId === studentId &&
+            p.activityId === activeClassActivity.id &&
+            p.periodMonth === selectedPeriod &&
+            p.status === 'paid'
+        ) ||
+        periodPayments.find(
+          p =>
+            p.studentId === studentId &&
+            p.activityId === activeClassActivity.id &&
+            p.periodMonth === selectedPeriod
+        )
       );
     } else {
       // Por clase: busca si se cobró en esta fecha
-      return periodPayments.find(
-        p => p.studentId === studentId && p.activityId === activeClassActivity.id && p.paymentDate === sessionDate
+      return (
+        periodPayments.find(
+          p =>
+            p.studentId === studentId &&
+            p.activityId === activeClassActivity.id &&
+            p.paymentDate === sessionDate &&
+            p.status === 'paid'
+        ) ||
+        periodPayments.find(
+          p =>
+            p.studentId === studentId &&
+            p.activityId === activeClassActivity.id &&
+            p.paymentDate === sessionDate
+        )
       );
+    }
+  };
+
+  const handleConfirmDialogAction = async () => {
+    if (!confirmDialog) return;
+    setIsConfirmBusy(true);
+    try {
+      if (confirmDialog.type === 'delete_payment') {
+        await deletePayment(confirmDialog.paymentId);
+        setSaveSuccessMsg(
+          `Pago de ${confirmDialog.studentName} (${confirmDialog.amount.toFixed(2)} €) desmarcado y eliminado.`
+        );
+        setTimeout(() => setSaveSuccessMsg(null), 4000);
+      } else if (confirmDialog.type === 'remove_student') {
+        const res = await unenrollStudentFromActivity(
+          confirmDialog.studentId,
+          confirmDialog.activityId
+        );
+        if (res.success) {
+          setSaveSuccessMsg(
+            `${confirmDialog.studentName} ha sido dado de baja del taller "${confirmDialog.activityName}".`
+          );
+          setTimeout(() => setSaveSuccessMsg(null), 4000);
+        }
+      }
+      setConfirmDialog(null);
+    } finally {
+      setIsConfirmBusy(false);
     }
   };
 
@@ -537,15 +827,32 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* Selector de Taller (solo los suyos) */}
                 <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">
-                    Seleccionar Taller / Clase *
-                  </label>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400">
+                      Seleccionar Taller / Clase *
+                    </label>
+                    {autoDetectedMatch &&
+                      autoDetectedMatch.matchType !== 'fallback' &&
+                      activeClassActivity?.id === autoDetectedMatch.activity.id && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                          <Clock className="h-3 w-3" />
+                          {autoDetectedMatch.matchType === 'live'
+                            ? 'En horario actual'
+                            : autoDetectedMatch.matchType === 'upcoming_today'
+                            ? 'Próxima clase hoy'
+                            : 'Clase de hoy'}
+                        </span>
+                      )}
+                  </div>
                   {myActivities.length === 0 ? (
                     <p className="text-xs text-rose-500">No tienes talleres asignados todavía.</p>
                   ) : (
                     <select
                       value={activeClassActivity?.id || ''}
-                      onChange={e => setSelectedClassActivityId(e.target.value)}
+                      onChange={e => {
+                        manualClassChoiceRef.current = true;
+                        setSelectedClassActivityId(e.target.value);
+                      }}
                       className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-900 dark:text-white focus:outline-indigo-500 min-h-[40px]"
                     >
                       {myActivities.map(a => (
@@ -719,15 +1026,33 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
                         {/* Control 2: Estado de Cobro y Botones de Pago */}
                         <div className="flex items-center gap-2 shrink-0">
-                          {isPaid ? (
-                            <div className="flex items-center gap-2 rounded-xl bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 min-h-[38px]">
-                              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                              <div className="text-left">
-                                <span>Pagado: {payment.amount.toFixed(2)} €</span>
-                                <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-normal">
-                                  {payment.paymentMethod === 'cash' ? 'En mano' : payment.paymentMethod} · {payment.paymentDate}
-                                </span>
+                          {isPaid && payment ? (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <div className="flex items-center gap-2 rounded-xl bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 min-h-[38px]">
+                                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                                <div className="text-left">
+                                  <span>Pagado: {payment.amount.toFixed(2)} €</span>
+                                  <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-normal">
+                                    {payment.paymentMethod === 'cash' ? 'En mano' : payment.paymentMethod} · {payment.paymentDate}
+                                  </span>
+                                </div>
                               </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setConfirmDialog({
+                                    type: 'delete_payment',
+                                    paymentId: payment.id,
+                                    studentName: student.name,
+                                    amount: payment.amount
+                                  })
+                                }
+                                title="Desmarcar / eliminar pago registrado"
+                                className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/20 px-2.5 py-2 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5 shrink-0" />
+                                <span>Desmarcar</span>
+                              </button>
                             </div>
                           ) : (
                             <div className="flex flex-wrap items-center gap-1.5">
@@ -760,36 +1085,58 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                       </div>
 
                       {/* INFORMACIÓN DEL ALUMNO A LA DERECHA DE LOS BOTONES */}
-                      <div className="flex items-center gap-3 min-w-0 lg:ml-auto">
-                        <div className="h-10 w-10 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-base shrink-0">
-                          {student.name.charAt(0)}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate">
-                              {student.name}
-                            </h4>
-                            {enrollment?.customPrice !== undefined && (
-                              <span className="rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-bold px-1.5 py-0.5 border border-amber-500/20 whitespace-nowrap">
-                                Tarifa especial: {studentFee}€
-                              </span>
-                            )}
+                      <div className="flex items-center justify-between gap-3 min-w-0 lg:ml-auto">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="h-10 w-10 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-base shrink-0">
+                            {student.name.charAt(0)}
                           </div>
-                          <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                            <span className="text-[11px] truncate">{student.phone}</span>
-                            {student.phone && (
-                              <a
-                                href={`https://wa.me/${student.phone.replace(/[^0-9]/g, '')}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 hover:underline shrink-0"
-                              >
-                                <MessageCircle className="h-3 w-3" />
-                                <span>WhatsApp</span>
-                              </a>
-                            )}
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate">
+                                {student.name}
+                              </h4>
+                              {enrollment?.customPrice !== undefined && (
+                                <span className="rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-bold px-1.5 py-0.5 border border-amber-500/20 whitespace-nowrap">
+                                  Tarifa especial: {studentFee}€
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                              <span className="text-[11px] truncate">{student.phone}</span>
+                              {student.phone && (
+                                <a
+                                  href={`https://wa.me/${student.phone.replace(/[^0-9]/g, '')}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 hover:underline shrink-0"
+                                >
+                                  <MessageCircle className="h-3 w-3" />
+                                  <span>WhatsApp</span>
+                                </a>
+                              )}
+                            </div>
                           </div>
                         </div>
+
+                        {activeClassActivity && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setConfirmDialog({
+                                type: 'remove_student',
+                                studentId: student.id,
+                                studentName: student.name,
+                                activityId: activeClassActivity.id,
+                                activityName: activeClassActivity.name
+                              })
+                            }
+                            title={`Quitar a ${student.name} de este taller`}
+                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:border-rose-300 hover:text-rose-600 dark:hover:text-rose-400 transition shrink-0 whitespace-nowrap"
+                          >
+                            <UserMinus className="h-3.5 w-3.5" />
+                            <span>Quitar</span>
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -1019,6 +1366,69 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           PESTAÑA 4: PERFIL UNIVERSAL (Datos Personales y Preferencias Personales y Seguridad)
           ========================================================================= */}
       {activeTab === 'profile' && <ProfileView />}
+
+      {/* Modal de Confirmación para desmarcar pago o quitar alumno de un taller */}
+      {confirmDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 shrink-0">
+                {confirmDialog.type === 'delete_payment' ? (
+                  <Trash2 className="h-5 w-5" />
+                ) : (
+                  <UserMinus className="h-5 w-5" />
+                )}
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                  {confirmDialog.type === 'delete_payment'
+                    ? 'Desmarcar y eliminar pago'
+                    : 'Quitar alumno del taller'}
+                </h4>
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                  {confirmDialog.type === 'delete_payment' ? (
+                    <>
+                      ¿Seguro que quieres desmarcar el pago de{' '}
+                      <strong>{confirmDialog.studentName}</strong> por importe de{' '}
+                      <strong>{confirmDialog.amount.toFixed(2)} €</strong>? El registro del pago se
+                      eliminará y volverá a aparecer como pendiente de cobro.
+                    </>
+                  ) : (
+                    <>
+                      ¿Seguro que quieres quitar a <strong>{confirmDialog.studentName}</strong> del
+                      taller <strong>{confirmDialog.activityName}</strong>? Su ficha general de
+                      socio no se eliminará.
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isConfirmBusy}
+                onClick={() => setConfirmDialog(null)}
+                className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isConfirmBusy}
+                onClick={handleConfirmDialogAction}
+                className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 transition disabled:opacity-60"
+              >
+                {isConfirmBusy
+                  ? 'Procesando...'
+                  : confirmDialog.type === 'delete_payment'
+                  ? 'Sí, desmarcar pago'
+                  : 'Sí, quitar del taller'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

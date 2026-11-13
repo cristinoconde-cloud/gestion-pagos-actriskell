@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { AppProvider, useApp, TeacherFinancialSummary } from './context/AppContext';
 import { Header } from './components/Header';
 import { DashboardView } from './components/DashboardView';
@@ -153,6 +153,29 @@ const MainAppContent: React.FC = () => {
       setCurrentTab(availableTabsForRole[0]);
     }
   }, [availableTabsForRole, currentTab]);
+
+  // Redirigir automáticamente al Portal correspondiente al iniciar sesión
+  const lastAuthUserIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!currentUser) {
+      lastAuthUserIdRef.current = null;
+      return;
+    }
+
+    if (lastAuthUserIdRef.current !== currentUser.id) {
+      lastAuthUserIdRef.current = currentUser.id;
+      const defaultPortalTab =
+        currentUser.role === 'admin'
+          ? 'dashboard'
+          : currentUser.role === 'student'
+          ? 'student-portal'
+          : 'teacher-portal';
+      setCurrentTab(defaultPortalTab);
+      if (currentPath === '/login') {
+        navigateTo('/');
+      }
+    }
+  }, [currentUser, currentPath]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchStartX(e.touches[0].clientX);
