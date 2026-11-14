@@ -147,7 +147,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
                       {e.date}
                     </td>
                     <td className="py-3 px-4 capitalize">
-                      {e.paymentMethod}
+                      {e.paymentMethod === 'cash' ? 'En Mano' : e.paymentMethod}
                     </td>
                     <td className="py-3 px-4 font-mono text-[11px] text-slate-500">
                       {e.invoiceNumber || '—'}

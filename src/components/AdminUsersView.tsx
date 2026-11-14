@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { AuthUser, Student, StudentStatus, Teacher, UserRole } from '../types';
 import {
@@ -55,6 +55,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     updateStudent,
     deleteStudent,
     validatePendingStudent,
+    confirmActivityEnrollment,
+    rejectActivityEnrollment,
     unenrollStudentFromActivity,
     updateTeacher,
     deleteTeacher,
@@ -72,9 +74,49 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     [students]
   );
 
+  const pendingEnrollmentRequests = useMemo(() => {
+    const items: Array<{
+      student: Student;
+      activityId: string;
+      activityName: string;
+      teacherName: string;
+      enrolledSince: string;
+    }> = [];
+    for (const st of students) {
+      for (const req of st.pendingEnrollments || []) {
+        const act = activities.find(a => a.id === req.activityId);
+        if (!act) continue;
+        const teacher = teachers.find(t => t.id === act.teacherId);
+        items.push({
+          student: st,
+          activityId: act.id,
+          activityName: act.name,
+          teacherName: teacher?.name || 'Sin asignar',
+          enrolledSince: req.enrolledSince
+        });
+      }
+    }
+    return items;
+  }, [students, activities, teachers]);
+
+  const totalPendingEnrollmentsAndSignups =
+    pendingValidationStudents.length + pendingEnrollmentRequests.length;
+
   const [activeSubTab, setActiveSubTab] = useState<AdminUsersSubTab>(
-    pendingValidationStudents.length > 0 ? 'enrollments' : 'students'
+    totalPendingEnrollmentsAndSignups > 0 ? 'enrollments' : 'students'
   );
+  const hasManualSubTabRef = useRef(false);
+  const selectSubTab = (tab: AdminUsersSubTab) => {
+    hasManualSubTabRef.current = true;
+    setActiveSubTab(tab);
+  };
+
+  useEffect(() => {
+    if (!hasManualSubTabRef.current && totalPendingEnrollmentsAndSignups > 0) {
+      setActiveSubTab('enrollments');
+    }
+  }, [totalPendingEnrollmentsAndSignups]);
+
   const [searchQuery, setSearchQuery] = useState('');
 
   // Filtros internos
@@ -89,6 +131,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
   // Feedback general
   const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [validatingStudentId, setValidatingStudentId] = useState<string | null>(null);
+  const [busyEnrollmentKey, setBusyEnrollmentKey] = useState<string | null>(null);
 
   // Alta de usuario Auth inline
   const [isAddingAuthUser, setIsAddingAuthUser] = useState(false);
@@ -246,10 +290,16 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     normalizedQuery
   ]);
 
-  // Alumnos filtrados
+  // Alumnos filtrados (pendientes de validación primero)
   const filteredStudents = useMemo(() => {
-    return students.filter(st => {
-      if (studentStatusFilter !== 'all' && st.status !== studentStatusFilter) return false;
+    const filtered = students.filter(st => {
+      const isPending =
+        st.status === 'pending_validation' || st.validationStatus === 'pending';
+      if (studentStatusFilter === 'pending_validation') {
+        if (!isPending) return false;
+      } else if (studentStatusFilter !== 'all' && st.status !== studentStatusFilter) {
+        return false;
+      }
       if (normalizedQuery) {
         const actNames = (st.activities || [])
           .map(e => activities.find(a => a.id === e.activityId)?.name || '')
@@ -260,6 +310,13 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         if (!haystack.includes(normalizedQuery)) return false;
       }
       return true;
+    });
+
+    return [...filtered].sort((a, b) => {
+      const aPending = a.status === 'pending_validation' || a.validationStatus === 'pending';
+      const bPending = b.status === 'pending_validation' || b.validationStatus === 'pending';
+      if (aPending !== bPending) return aPending ? -1 : 1;
+      return a.name.localeCompare(b.name, 'es');
     });
   }, [students, activities, studentStatusFilter, normalizedQuery]);
 
@@ -292,19 +349,26 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   }, [profiles, normalizedQuery]);
 
   const handleValidateStudent = async (st: Student, approve: boolean) => {
-    const res = await validatePendingStudent(st.id, approve);
-    if (res.success) {
-      setActionFeedback({
-        type: 'success',
-        message: approve
-          ? `Alta definitiva confirmada para "${st.name}" como socio activo.`
-          : `Alta de "${st.name}" marcada como rechazada / de baja.`
-      });
-    } else {
-      setActionFeedback({
-        type: 'error',
-        message: res.error || 'No se pudo actualizar el estado del socio.'
-      });
+    if (validatingStudentId === st.id) return;
+    setValidatingStudentId(st.id);
+    setActionFeedback(null);
+    try {
+      const res = await validatePendingStudent(st.id, approve);
+      if (res.success) {
+        setActionFeedback({
+          type: 'success',
+          message: approve
+            ? `Alta definitiva confirmada para "${st.name}" como socio activo.`
+            : `Alta de "${st.name}" marcada como rechazada / de baja.`
+        });
+      } else {
+        setActionFeedback({
+          type: 'error',
+          message: res.error || 'No se pudo actualizar el estado del socio.'
+        });
+      }
+    } finally {
+      setValidatingStudentId(null);
     }
   };
 
@@ -473,7 +537,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <button
           type="button"
-          onClick={() => setActiveSubTab('students')}
+          onClick={() => selectSubTab('students')}
           className="text-left rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs hover:border-emerald-400/60 transition"
         >
           <div className="flex items-center justify-between">
@@ -492,7 +556,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
         <button
           type="button"
-          onClick={() => setActiveSubTab('enrollments')}
+          onClick={() => selectSubTab('enrollments')}
           className={`text-left rounded-2xl border p-4 shadow-xs transition ${
             pendingValidationStudents.length > 0
               ? 'border-amber-400/70 bg-amber-50/70 dark:bg-amber-950/25'
@@ -515,7 +579,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
         <button
           type="button"
-          onClick={() => setActiveSubTab('teachers')}
+          onClick={() => selectSubTab('teachers')}
           className="text-left rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs hover:border-indigo-400/60 transition"
         >
           <div className="flex items-center justify-between">
@@ -534,7 +598,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
         <button
           type="button"
-          onClick={() => setActiveSubTab('accounts')}
+          onClick={() => selectSubTab('accounts')}
           className="text-left rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs hover:border-purple-400/60 transition"
         >
           <div className="flex items-center justify-between">
@@ -586,13 +650,13 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             {
               id: 'enrollments' as const,
               label: 'Inscripciones y Altas',
-              badge: pendingValidationStudents.length,
+              badge: totalPendingEnrollmentsAndSignups,
               icon: Sparkles
             },
             {
               id: 'students' as const,
               label: `Alumnos y Socios (${students.length})`,
-              badge: 0,
+              badge: pendingValidationStudents.length,
               icon: BookOpen
             },
             {
@@ -614,7 +678,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setActiveSubTab(tab.id)}
+                onClick={() => selectSubTab(tab.id)}
                 className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold whitespace-nowrap shrink-0 transition ${
                   isActive
                     ? 'bg-emerald-600 text-white shadow-xs'
@@ -660,6 +724,29 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         </div>
       </div>
 
+      {/* Aviso destacado siempre visible si hay altas rápidas o solicitudes pendientes al estar en otra subpestaña */}
+      {totalPendingEnrollmentsAndSignups > 0 && activeSubTab !== 'enrollments' && (
+        <div className="rounded-2xl border border-amber-500/40 bg-amber-50/80 dark:bg-amber-950/30 px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span className="text-xs font-bold text-amber-900 dark:text-amber-200 truncate">
+              {pendingEnrollmentRequests.length > 0 && pendingValidationStudents.length > 0
+                ? `${pendingEnrollmentRequests.length} solicitud(es) de taller y ${pendingValidationStudents.length} alta(s) pendiente(s)`
+                : pendingEnrollmentRequests.length > 0
+                ? `${pendingEnrollmentRequests.length} solicitud(es) de inscripción a talleres pendiente(s)`
+                : `${pendingValidationStudents.length} alta(s) rápida(s) de alumnos pendiente(s) de validar`}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => selectSubTab('enrollments')}
+            className="shrink-0 rounded-xl bg-amber-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-amber-700 transition whitespace-nowrap"
+          >
+            Revisar ahora
+          </button>
+        </div>
+      )}
+
       {/* ================================================================== */}
       {/* SUB-PESTAÑA 1: INSCRIPCIONES Y ALTAS DE PROFESORES                 */}
       {/* ================================================================== */}
@@ -703,87 +790,139 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   return (
                     <div
                       key={st.id}
-                      className="rounded-xl border border-amber-500/30 bg-white dark:bg-slate-900 p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs"
+                      className="rounded-xl border border-amber-500/30 bg-white dark:bg-slate-900 px-3 py-2 md:p-3.5 shadow-xs"
                     >
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-sm text-slate-900 dark:text-white">
+                      {/* Vista móvil: 1 fila compacta + botones solo icono */}
+                      <div className="flex md:hidden items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1 flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" title="Pendiente" />
+                          <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
                             {st.name}
                           </span>
-                          {getStudentStatusBadge(st.status)}
-                          {addedByName && (
-                            <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
-                              Añadido por: {addedByName}
-                            </span>
-                          )}
                         </div>
-                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                          {st.phone && (
-                            <span className="inline-flex items-center gap-1">
-                              <Phone className="h-3 w-3" /> {st.phone}
-                            </span>
-                          )}
-                          {st.email && (
-                            <span className="inline-flex items-center gap-1">
-                              <Mail className="h-3 w-3" /> {st.email}
-                            </span>
-                          )}
-                          <span>Alta: {st.registeredAt}</span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => onOpenAddStudent(st)}
+                            title="Editar ficha"
+                            aria-label={`Editar ficha de ${st.name}`}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setConfirmAction({
+                                title: 'Rechazar / Dar de baja alta pendiente',
+                                description: `¿Seguro que quieres rechazar el alta de "${st.name}"? Pasará a estado de baja/inactivo.`,
+                                confirmLabel: 'Sí, rechazar',
+                                tone: 'warning',
+                                onConfirm: () => handleValidateStudent(st, false)
+                              })
+                            }
+                            title="Rechazar alta"
+                            aria-label={`Rechazar alta de ${st.name}`}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
+                          >
+                            <UserX className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={validatingStudentId === st.id}
+                            onClick={() => handleValidateStudent(st, true)}
+                            title="Confirmar Socio"
+                            aria-label={`Confirmar socio ${st.name}`}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-xs disabled:opacity-50"
+                          >
+                            <UserCheck className="h-3.5 w-3.5" />
+                          </button>
                         </div>
-                        {stActivities.length > 0 && (
-                          <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                            {stActivities.map(item => (
-                              <span
-                                key={item.actId}
-                                className="inline-flex items-center gap-1 rounded-lg bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200"
-                              >
-                                <Sparkles className="h-3 w-3 text-emerald-600" />
-                                {item.actName}
-                                {item.teacherName ? ` (${item.teacherName})` : ''}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        {st.notes && (
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
-                            Nota: {st.notes}
-                          </p>
-                        )}
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => onOpenAddStudent(st)}
-                          className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                          <span>Editar</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setConfirmAction({
-                              title: 'Rechazar / Dar de baja alta pendiente',
-                              description: `¿Seguro que quieres rechazar el alta de "${st.name}"? Pasará a estado de baja/inactivo.`,
-                              confirmLabel: 'Sí, rechazar',
-                              tone: 'warning',
-                              onConfirm: () => handleValidateStudent(st, false)
-                            })
-                          }
-                          className="inline-flex items-center gap-1 rounded-xl border border-rose-300 dark:border-rose-800 px-3 py-1.5 text-xs font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
-                        >
-                          <UserX className="h-3.5 w-3.5" />
-                          <span>Rechazar</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleValidateStudent(st, true)}
-                          className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs whitespace-nowrap"
-                        >
-                          <UserCheck className="h-3.5 w-3.5" />
-                          <span>Confirmar Socio</span>
-                        </button>
+                      {/* Vista escritorio */}
+                      <div className="hidden md:flex md:items-center justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-bold text-sm text-slate-900 dark:text-white">
+                              {st.name}
+                            </span>
+                            {getStudentStatusBadge(st.status)}
+                            {addedByName && (
+                              <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
+                                Añadido por: {addedByName}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+                            {st.phone && (
+                              <span className="inline-flex items-center gap-1">
+                                <Phone className="h-3 w-3" /> {st.phone}
+                              </span>
+                            )}
+                            {st.email && (
+                              <span className="inline-flex items-center gap-1">
+                                <Mail className="h-3 w-3" /> {st.email}
+                              </span>
+                            )}
+                            <span>Alta: {st.registeredAt}</span>
+                          </div>
+                          {stActivities.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                              {stActivities.map(item => (
+                                <span
+                                  key={item.actId}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200"
+                                >
+                                  <Sparkles className="h-3 w-3 text-emerald-600" />
+                                  {item.actName}
+                                  {item.teacherName ? ` (${item.teacherName})` : ''}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {st.notes && (
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
+                              Nota: {st.notes}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => onOpenAddStudent(st)}
+                            className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                            <span>Editar</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setConfirmAction({
+                                title: 'Rechazar / Dar de baja alta pendiente',
+                                description: `¿Seguro que quieres rechazar el alta de "${st.name}"? Pasará a estado de baja/inactivo.`,
+                                confirmLabel: 'Sí, rechazar',
+                                tone: 'warning',
+                                onConfirm: () => handleValidateStudent(st, false)
+                              })
+                            }
+                            className="inline-flex items-center gap-1 rounded-xl border border-rose-300 dark:border-rose-800 px-3 py-1.5 text-xs font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
+                          >
+                            <UserX className="h-3.5 w-3.5" />
+                            <span>Rechazar</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={validatingStudentId === st.id}
+                            onClick={() => handleValidateStudent(st, true)}
+                            className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs whitespace-nowrap disabled:opacity-50"
+                          >
+                            <UserCheck className="h-3.5 w-3.5" />
+                            <span>{validatingStudentId === st.id ? 'Confirmando...' : 'Confirmar Socio'}</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -791,6 +930,154 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               </div>
             )}
           </div>
+
+          {/* Bloque A2: Solicitudes de inscripción a talleres enviadas por alumnos */}
+          {pendingEnrollmentRequests.length > 0 && (
+            <div className="rounded-2xl border border-indigo-500/35 bg-indigo-50/60 dark:bg-indigo-950/20 p-4 sm:p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                <div>
+                  <h2 className="text-sm font-bold text-indigo-950 dark:text-indigo-100">
+                    Solicitudes de Inscripción a Talleres ({pendingEnrollmentRequests.length})
+                  </h2>
+                  <p className="text-[11px] text-indigo-800/80 dark:text-indigo-300/80">
+                    Alumnos que han solicitado plaza desde la app y esperan confirmación de su inscripción.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {pendingEnrollmentRequests.map(req => {
+                  const confirmKey = `c:${req.student.id}:${req.activityId}`;
+                  const rejectKey = `r:${req.student.id}:${req.activityId}`;
+                  const isBusy = busyEnrollmentKey === confirmKey || busyEnrollmentKey === rejectKey;
+
+                  const handleConfirm = async () => {
+                    setBusyEnrollmentKey(confirmKey);
+                    try {
+                      const res = await confirmActivityEnrollment(req.student.id, req.activityId);
+                      if (res.success) {
+                        setActionFeedback({
+                          type: 'success',
+                          message: `Inscripción confirmada: "${req.student.name}" en "${req.activityName}".`
+                        });
+                      } else {
+                        setActionFeedback({
+                          type: 'error',
+                          message: res.error || 'No se pudo confirmar la inscripción.'
+                        });
+                      }
+                    } finally {
+                      setBusyEnrollmentKey(null);
+                    }
+                  };
+
+                  const handleReject = async () => {
+                    setBusyEnrollmentKey(rejectKey);
+                    try {
+                      const res = await rejectActivityEnrollment(req.student.id, req.activityId);
+                      if (res.success) {
+                        setActionFeedback({
+                          type: 'success',
+                          message: `Solicitud de "${req.student.name}" para "${req.activityName}" rechazada.`
+                        });
+                      } else {
+                        setActionFeedback({
+                          type: 'error',
+                          message: res.error || 'No se pudo rechazar la solicitud.'
+                        });
+                      }
+                    } finally {
+                      setBusyEnrollmentKey(null);
+                    }
+                  };
+
+                  return (
+                    <div
+                      key={`${req.student.id}-${req.activityId}`}
+                      className="rounded-xl border border-indigo-500/25 bg-white dark:bg-slate-900 px-3 py-2 md:p-3.5 shadow-xs"
+                    >
+                      {/* Vista móvil: 1 fila + botones solo icono */}
+                      <div className="flex md:hidden items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-full bg-indigo-500 shrink-0" />
+                          <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
+                            {req.student.name}
+                          </span>
+                          <span className="truncate text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
+                            · {req.activityName}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={handleReject}
+                            title="Rechazar solicitud"
+                            aria-label={`Rechazar solicitud de ${req.student.name}`}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 transition disabled:opacity-50"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={handleConfirm}
+                            title="Confirmar inscripción"
+                            aria-label={`Confirmar inscripción de ${req.student.name}`}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Vista escritorio */}
+                      <div className="hidden md:flex items-center justify-between gap-3">
+                        <div className="space-y-0.5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-bold text-sm text-slate-900 dark:text-white">
+                              {req.student.name}
+                            </span>
+                            <span className="rounded-lg bg-indigo-500/10 px-2 py-0.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
+                              {req.activityName}
+                            </span>
+                            <span className="text-[11px] text-slate-500">
+                              Monitor: <strong>{req.teacherName}</strong>
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                            {[req.student.phone, req.student.email].filter(Boolean).join(' · ') || 'Sin contacto'} · Solicitada el {req.enrolledSince}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={handleReject}
+                            className="inline-flex items-center gap-1 rounded-xl border border-rose-300 dark:border-rose-800 px-3 py-1.5 text-xs font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                            <span>Rechazar</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={handleConfirm}
+                            className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs disabled:opacity-50"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                            <span>{busyEnrollmentKey === confirmKey ? 'Confirmando...' : 'Confirmar plaza'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Bloque B: Inscripciones activas por taller / profesor */}
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 space-y-4 shadow-xs">
@@ -855,83 +1142,164 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 {enrollmentRows.map(row => (
                   <div
                     key={`${row.student.id}-${row.activityId}`}
-                    className="py-3 flex flex-col md:flex-row md:items-center justify-between gap-3"
+                    className="py-2 md:py-3"
                   >
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
+                    {/* Vista móvil: 1 fila compacta + botones solo icono */}
+                    <div className="flex md:hidden items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                        <span
+                          className={`h-2 w-2 rounded-full shrink-0 ${
+                            row.student.status === 'active'
+                              ? 'bg-emerald-500'
+                              : row.student.status === 'pending_validation'
+                              ? 'bg-amber-500'
+                              : row.student.status === 'trial'
+                              ? 'bg-sky-500'
+                              : 'bg-slate-400'
+                          }`}
+                        />
+                        <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
                           {row.student.name}
                         </span>
-                        {getStudentStatusBadge(row.student.status)}
-                        <span className="rounded-lg bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
-                          {row.activityName}
-                        </span>
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                          Monitor: <strong className="text-slate-700 dark:text-slate-200">{row.teacherName}</strong>
+                        <span className="truncate text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                          · {row.activityName}
                         </span>
                       </div>
-                      <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                        <span>
-                          Tarifa: <strong className="text-slate-700 dark:text-slate-200">{row.price}€</strong>{' '}
-                          ({row.billingMode === 'per_class' ? 'por clase' : 'mensual'})
-                        </span>
-                        <span>Inscrito: {row.enrolledSince}</span>
-                        {row.addedByName && (
-                          <span className="text-indigo-600 dark:text-indigo-400 font-medium">
-                            Alta añadida por: {row.addedByName}
-                          </span>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        {row.isPendingStudent && (
+                          <button
+                            type="button"
+                            disabled={validatingStudentId === row.student.id}
+                            onClick={() => handleValidateStudent(row.student, true)}
+                            title="Confirmar Socio"
+                            aria-label={`Confirmar socio ${row.student.name}`}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                          >
+                            <UserCheck className="h-3.5 w-3.5" />
+                          </button>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => onOpenAddStudent(row.student)}
+                          title="Editar ficha"
+                          aria-label={`Editar ficha de ${row.student.name}`}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setConfirmAction({
+                              title: 'Quitar inscripción del taller',
+                              description: `¿Confirmas dar de baja a "${row.student.name}" del taller "${row.activityName}"?`,
+                              confirmLabel: 'Sí, quitar del taller',
+                              tone: 'danger',
+                              onConfirm: async () => {
+                                const res = await unenrollStudentFromActivity(row.student.id, row.activityId);
+                                if (res.success) {
+                                  setActionFeedback({
+                                    type: 'success',
+                                    message: `"${row.student.name}" ha sido dado de baja del taller "${row.activityName}".`
+                                  });
+                                } else {
+                                  setActionFeedback({
+                                    type: 'error',
+                                    message: res.error || 'No se pudo quitar la inscripción.'
+                                  });
+                                }
+                              }
+                            })
+                          }
+                          title="Quitar del taller"
+                          aria-label={`Quitar a ${row.student.name} de ${row.activityName}`}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-                      {row.isPendingStudent && (
+                    {/* Vista escritorio */}
+                    <div className="hidden md:flex md:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
+                            {row.student.name}
+                          </span>
+                          {getStudentStatusBadge(row.student.status)}
+                          <span className="rounded-lg bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                            {row.activityName}
+                          </span>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Monitor: <strong className="text-slate-700 dark:text-slate-200">{row.teacherName}</strong>
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+                          <span>
+                            Tarifa: <strong className="text-slate-700 dark:text-slate-200">{row.price}€</strong>{' '}
+                            ({row.billingMode === 'per_class' ? 'por clase' : 'mensual'})
+                          </span>
+                          <span>Inscrito: {row.enrolledSince}</span>
+                          {row.addedByName && (
+                            <span className="text-indigo-600 dark:text-indigo-400 font-medium">
+                              Alta añadida por: {row.addedByName}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                        {row.isPendingStudent && (
+                          <button
+                            type="button"
+                            disabled={validatingStudentId === row.student.id}
+                            onClick={() => handleValidateStudent(row.student, true)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition whitespace-nowrap disabled:opacity-50"
+                          >
+                            <UserCheck className="h-3 w-3" />
+                            <span>{validatingStudentId === row.student.id ? 'Confirmando...' : 'Confirmar Socio'}</span>
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => handleValidateStudent(row.student, true)}
-                          className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition whitespace-nowrap"
+                          onClick={() => onOpenAddStudent(row.student)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
                         >
-                          <UserCheck className="h-3 w-3" />
-                          <span>Confirmar Socio</span>
+                          <Edit2 className="h-3 w-3" />
+                          <span>Editar ficha</span>
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => onOpenAddStudent(row.student)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
-                      >
-                        <Edit2 className="h-3 w-3" />
-                        <span>Editar ficha</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setConfirmAction({
-                            title: 'Quitar inscripción del taller',
-                            description: `¿Confirmas dar de baja a "${row.student.name}" del taller "${row.activityName}"?`,
-                            confirmLabel: 'Sí, quitar del taller',
-                            tone: 'danger',
-                            onConfirm: async () => {
-                              const res = await unenrollStudentFromActivity(row.student.id, row.activityId);
-                              if (res.success) {
-                                setActionFeedback({
-                                  type: 'success',
-                                  message: `"${row.student.name}" ha sido dado de baja del taller "${row.activityName}".`
-                                });
-                              } else {
-                                setActionFeedback({
-                                  type: 'error',
-                                  message: res.error || 'No se pudo quitar la inscripción.'
-                                });
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setConfirmAction({
+                              title: 'Quitar inscripción del taller',
+                              description: `¿Confirmas dar de baja a "${row.student.name}" del taller "${row.activityName}"?`,
+                              confirmLabel: 'Sí, quitar del taller',
+                              tone: 'danger',
+                              onConfirm: async () => {
+                                const res = await unenrollStudentFromActivity(row.student.id, row.activityId);
+                                if (res.success) {
+                                  setActionFeedback({
+                                    type: 'success',
+                                    message: `"${row.student.name}" ha sido dado de baja del taller "${row.activityName}".`
+                                  });
+                                } else {
+                                  setActionFeedback({
+                                    type: 'error',
+                                    message: res.error || 'No se pudo quitar la inscripción.'
+                                  });
+                                }
                               }
-                            }
-                          })
-                        }
-                        className="inline-flex items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        <span>Quitar del taller</span>
-                      </button>
+                            })
+                          }
+                          className="inline-flex items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          <span>Quitar del taller</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -991,132 +1359,250 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   .map(e => activities.find(a => a.id === e.activityId))
                   .filter((a): a is NonNullable<typeof a> => Boolean(a));
                 const isInactive = st.status === 'inactive';
-                const isPending = st.status === 'pending_validation';
+                const isPending =
+                  st.status === 'pending_validation' || st.validationStatus === 'pending';
                 const linkedProfile = profiles.find(p => p.studentId === st.id || p.id === st.profileId);
 
                 return (
                   <div
                     key={st.id}
-                    className={`py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 ${
-                      isInactive ? 'opacity-75' : ''
-                    }`}
+                    className={`py-2 md:py-3.5 ${isInactive ? 'opacity-75' : ''}`}
                   >
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-bold text-sm text-slate-900 dark:text-white">
+                    {/* Vista móvil: 1 fila por socio/alumno + botones solo icono */}
+                    <div className="flex md:hidden items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1 flex items-center gap-2">
+                        <span
+                          className={`h-2 w-2 rounded-full shrink-0 ${
+                            isPending
+                              ? 'bg-amber-500'
+                              : st.status === 'active'
+                              ? 'bg-emerald-500'
+                              : st.status === 'trial'
+                              ? 'bg-sky-500'
+                              : 'bg-slate-400'
+                          }`}
+                          title={isPending ? 'pending_validation' : st.status}
+                        />
+                        <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
                           {st.name}
                         </span>
-                        {getStudentStatusBadge(st.status)}
-                        {linkedProfile && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:text-purple-300">
-                            <Link2 className="h-3 w-3" /> Acceso Auth vinculado
+                        {(isPending || st.status !== 'active') && (
+                          <span
+                            className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                              isPending
+                                ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                                : st.status === 'trial'
+                                ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                                : 'bg-slate-500/15 text-slate-600 dark:text-slate-400'
+                            }`}
+                          >
+                            {isPending ? 'Pend.' : st.status === 'trial' ? 'Prueba' : 'Baja'}
                           </span>
                         )}
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                        {st.phone && (
-                          <span className="inline-flex items-center gap-1">
-                            <Phone className="h-3 w-3" /> {st.phone}
-                          </span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {isPending && (
+                          <button
+                            type="button"
+                            disabled={validatingStudentId === st.id}
+                            onClick={() => handleValidateStudent(st, true)}
+                            title="Confirmar Socio"
+                            aria-label={`Confirmar socio ${st.name}`}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                          >
+                            <UserCheck className="h-3.5 w-3.5" />
+                          </button>
                         )}
-                        {st.email && (
-                          <span className="inline-flex items-center gap-1">
-                            <Mail className="h-3 w-3" /> {st.email}
-                          </span>
-                        )}
-                        <span>Registro: {st.registeredAt}</span>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                        {enrolledActivities.length === 0 ? (
-                          <span className="text-[11px] text-slate-400 italic">
-                            Sin talleres asignados
-                          </span>
-                        ) : (
-                          enrolledActivities.map(act => (
-                            <span
-                              key={act.id}
-                              className="rounded-lg bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200"
-                            >
-                              {act.name}
-                            </span>
-                          ))
-                        )}
-                      </div>
-
-                      {st.notes && (
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
-                          {st.notes}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-                      {isPending && (
                         <button
                           type="button"
-                          onClick={() => handleValidateStudent(st, true)}
-                          className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition whitespace-nowrap"
+                          onClick={() => onOpenAddStudent(st)}
+                          title="Modificar"
+                          aria-label={`Modificar ${st.name}`}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                         >
-                          <UserCheck className="h-3.5 w-3.5" />
-                          <span>Confirmar Socio</span>
+                          <Edit2 className="h-3.5 w-3.5" />
                         </button>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => onOpenAddStudent(st)}
-                        className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
-                      >
-                        <Edit2 className="h-3.5 w-3.5" />
-                        <span>Modificar</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateStudent(st.id, { status: isInactive ? 'active' : 'inactive' }).then(() => {
-                            setActionFeedback({
-                              type: 'success',
-                              message: isInactive
-                                ? `"${st.name}" reactivado como socio activo.`
-                                : `"${st.name}" pasado a estado de baja.`
-                            });
-                          })
-                        }
-                        className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
-                          isInactive
-                            ? 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
-                            : 'border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30'
-                        }`}
-                      >
-                        <Power className="h-3.5 w-3.5" />
-                        <span>{isInactive ? 'Reactivar' : 'Dar de baja'}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setConfirmAction({
-                            title: 'Eliminar alumno / socio definitivamente',
-                            description: `¿Seguro que quieres eliminar la ficha de "${st.name}"? Se perderá su historial de matrícula asociado si no hay recibos que lo bloqueen.`,
-                            confirmLabel: 'Eliminar ficha',
-                            tone: 'danger',
-                            onConfirm: async () => {
-                              await deleteStudent(st.id);
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const res = await updateStudent(st.id, { status: isInactive ? 'active' : 'inactive' });
+                            if (res.success) {
                               setActionFeedback({
                                 type: 'success',
-                                message: `Ficha de "${st.name}" eliminada.`
+                                message: isInactive
+                                  ? `"${st.name}" reactivado como socio activo.`
+                                  : `"${st.name}" pasado a estado de baja.`
+                              });
+                            } else {
+                              setActionFeedback({
+                                type: 'error',
+                                message: res.error || 'No se pudo cambiar el estado del alumno.'
                               });
                             }
-                          })
-                        }
-                        className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        <span>Eliminar</span>
-                      </button>
+                          }}
+                          title={isInactive ? 'Reactivar' : 'Dar de baja'}
+                          aria-label={isInactive ? `Reactivar a ${st.name}` : `Dar de baja a ${st.name}`}
+                          className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
+                            isInactive
+                              ? 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                              : 'border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                          }`}
+                        >
+                          <Power className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setConfirmAction({
+                              title: 'Eliminar alumno / socio definitivamente',
+                              description: `¿Seguro que quieres eliminar la ficha de "${st.name}"? Se perderá su historial de matrícula asociado si no hay recibos que lo bloqueen.`,
+                              confirmLabel: 'Eliminar ficha',
+                              tone: 'danger',
+                              onConfirm: async () => {
+                                await deleteStudent(st.id);
+                                setActionFeedback({
+                                  type: 'success',
+                                  message: `Ficha de "${st.name}" eliminada.`
+                                });
+                              }
+                            })
+                          }
+                          title="Eliminar"
+                          aria-label={`Eliminar ficha de ${st.name}`}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Vista escritorio */}
+                    <div className="hidden md:flex md:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-sm text-slate-900 dark:text-white">
+                            {st.name}
+                          </span>
+                          {getStudentStatusBadge(st.status)}
+                          {linkedProfile && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:text-purple-300">
+                              <Link2 className="h-3 w-3" /> Acceso Auth vinculado
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+                          {st.phone && (
+                            <span className="inline-flex items-center gap-1">
+                              <Phone className="h-3 w-3" /> {st.phone}
+                            </span>
+                          )}
+                          {st.email && (
+                            <span className="inline-flex items-center gap-1">
+                              <Mail className="h-3 w-3" /> {st.email}
+                            </span>
+                          )}
+                          <span>Registro: {st.registeredAt}</span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                          {enrolledActivities.length === 0 ? (
+                            <span className="text-[11px] text-slate-400 italic">
+                              Sin talleres asignados
+                            </span>
+                          ) : (
+                            enrolledActivities.map(act => (
+                              <span
+                                key={act.id}
+                                className="rounded-lg bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200"
+                              >
+                                {act.name}
+                              </span>
+                            ))
+                          )}
+                        </div>
+
+                        {st.notes && (
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
+                            {st.notes}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                        {isPending && (
+                          <button
+                            type="button"
+                            disabled={validatingStudentId === st.id}
+                            onClick={() => handleValidateStudent(st, true)}
+                            className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition whitespace-nowrap disabled:opacity-50"
+                          >
+                            <UserCheck className="h-3.5 w-3.5" />
+                            <span>{validatingStudentId === st.id ? 'Confirmando...' : 'Confirmar Socio'}</span>
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => onOpenAddStudent(st)}
+                          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                          <span>Modificar</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const res = await updateStudent(st.id, { status: isInactive ? 'active' : 'inactive' });
+                            if (res.success) {
+                              setActionFeedback({
+                                type: 'success',
+                                message: isInactive
+                                  ? `"${st.name}" reactivado como socio activo.`
+                                  : `"${st.name}" pasado a estado de baja.`
+                              });
+                            } else {
+                              setActionFeedback({
+                                type: 'error',
+                                message: res.error || 'No se pudo cambiar el estado del alumno.'
+                              });
+                            }
+                          }}
+                          className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
+                            isInactive
+                              ? 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                              : 'border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                          }`}
+                        >
+                          <Power className="h-3.5 w-3.5" />
+                          <span>{isInactive ? 'Reactivar' : 'Dar de baja'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setConfirmAction({
+                              title: 'Eliminar alumno / socio definitivamente',
+                              description: `¿Seguro que quieres eliminar la ficha de "${st.name}"? Se perderá su historial de matrícula asociado si no hay recibos que lo bloqueen.`,
+                              confirmLabel: 'Eliminar ficha',
+                              tone: 'danger',
+                              onConfirm: async () => {
+                                await deleteStudent(st.id);
+                                setActionFeedback({
+                                  type: 'success',
+                                  message: `Ficha de "${st.name}" eliminada.`
+                                });
+                              }
+                            })
+                          }
+                          className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          <span>Eliminar</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -1182,139 +1668,230 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 return (
                   <div
                     key={t.id}
-                    className={`py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 ${
-                      !t.active ? 'opacity-75' : ''
-                    }`}
+                    className={`py-2 md:py-3.5 ${!t.active ? 'opacity-75' : ''}`}
                   >
-                    <div className="flex items-start gap-3">
-                      {t.avatarUrl || t.avatar ? (
-                        <img
-                          src={t.avatarUrl || t.avatar}
-                          alt={t.name}
-                          className="h-10 w-10 rounded-full object-cover border border-indigo-400 shrink-0"
+                    {/* Vista móvil: 1 fila compacta + botones solo icono */}
+                    <div className="flex md:hidden items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1 flex items-center gap-2">
+                        {t.avatarUrl || t.avatar ? (
+                          <img
+                            src={t.avatarUrl || t.avatar}
+                            alt={t.name}
+                            className="h-7 w-7 rounded-full object-cover border border-indigo-400 shrink-0"
+                          />
+                        ) : (
+                          <div className="h-7 w-7 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold flex items-center justify-center text-xs shrink-0">
+                            {t.name.charAt(0)}
+                          </div>
+                        )}
+                        <span
+                          className={`h-2 w-2 rounded-full shrink-0 ${
+                            t.active ? 'bg-emerald-500' : 'bg-slate-400'
+                          }`}
                         />
-                      ) : (
-                        <div className="h-10 w-10 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold flex items-center justify-center text-sm shrink-0">
-                          {t.name.charAt(0)}
-                        </div>
-                      )}
+                        <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
+                          {t.name}
+                        </span>
+                        {!t.active && (
+                          <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-slate-500/15 text-slate-600 dark:text-slate-400">
+                            Baja
+                          </span>
+                        )}
+                      </div>
 
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-sm text-slate-900 dark:text-white">
-                            {t.name}
-                          </span>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                              t.active
-                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                                : 'bg-slate-500/15 text-slate-600 dark:text-slate-400'
-                            }`}
-                          >
-                            {t.active ? 'Activo' : 'De baja'}
-                          </span>
-                          <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
-                            {schemeText}
-                          </span>
-                          {linkedProfile && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:text-purple-300">
-                              <Link2 className="h-3 w-3" /> Cuenta Auth vinculada
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                          {t.phone && (
-                            <span className="inline-flex items-center gap-1">
-                              <Phone className="h-3 w-3" /> {t.phone}
-                            </span>
-                          )}
-                          {t.email && (
-                            <span className="inline-flex items-center gap-1">
-                              <Mail className="h-3 w-3" /> {t.email}
-                            </span>
-                          )}
-                          <span>
-                            Cobro: {t.collectionType === 'association' ? 'Asociación' : 'Personal'}
-                          </span>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                          {tActivities.length === 0 ? (
-                            <span className="text-[11px] text-slate-400 italic">
-                              Sin talleres asignados
-                            </span>
-                          ) : (
-                            tActivities.map(act => (
-                              <span
-                                key={act.id}
-                                className="rounded-lg bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200"
-                              >
-                                {act.name}
-                              </span>
-                            ))
-                          )}
-                        </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => onOpenAddTeacher(t)}
+                          title="Modificar"
+                          aria-label={`Modificar monitor ${t.name}`}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateTeacher(t.id, { active: !t.active }).then(() => {
+                              setActionFeedback({
+                                type: 'success',
+                                message: t.active
+                                  ? `Monitor "${t.name}" marcado como de baja.`
+                                  : `Monitor "${t.name}" reactivado.`
+                              });
+                            })
+                          }
+                          title={t.active ? 'Dar de baja' : 'Reactivar'}
+                          aria-label={t.active ? `Dar de baja a ${t.name}` : `Reactivar a ${t.name}`}
+                          className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
+                            !t.active
+                              ? 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                              : 'border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                          }`}
+                        >
+                          <Power className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setConfirmAction({
+                              title: 'Eliminar profesor / monitor',
+                              description:
+                                tActivities.length > 0
+                                  ? `"${t.name}" tiene ${tActivities.length} taller(es) asignado(s). ¿Seguro que deseas eliminarlo? Revisa si prefieres darle de baja en su lugar.`
+                                  : `¿Seguro que quieres eliminar definitivamente la ficha del monitor "${t.name}"?`,
+                              confirmLabel: 'Eliminar monitor',
+                              tone: 'danger',
+                              onConfirm: async () => {
+                                await deleteTeacher(t.id);
+                                setActionFeedback({
+                                  type: 'success',
+                                  message: `Monitor "${t.name}" eliminado.`
+                                });
+                              }
+                            })
+                          }
+                          title="Eliminar"
+                          aria-label={`Eliminar monitor ${t.name}`}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => onOpenAddTeacher(t)}
-                        className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
-                      >
-                        <Edit2 className="h-3.5 w-3.5" />
-                        <span>Modificar</span>
-                      </button>
+                    {/* Vista escritorio */}
+                    <div className="hidden md:flex md:items-center justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        {t.avatarUrl || t.avatar ? (
+                          <img
+                            src={t.avatarUrl || t.avatar}
+                            alt={t.name}
+                            className="h-10 w-10 rounded-full object-cover border border-indigo-400 shrink-0"
+                          />
+                        ) : (
+                          <div className="h-10 w-10 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold flex items-center justify-center text-sm shrink-0">
+                            {t.name.charAt(0)}
+                          </div>
+                        )}
 
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateTeacher(t.id, { active: !t.active }).then(() => {
-                            setActionFeedback({
-                              type: 'success',
-                              message: t.active
-                                ? `Monitor "${t.name}" marcado como de baja.`
-                                : `Monitor "${t.name}" reactivado.`
-                            });
-                          })
-                        }
-                        className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
-                          !t.active
-                            ? 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
-                            : 'border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30'
-                        }`}
-                      >
-                        <Power className="h-3.5 w-3.5" />
-                        <span>{t.active ? 'Dar de baja' : 'Reactivar'}</span>
-                      </button>
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-bold text-sm text-slate-900 dark:text-white">
+                              {t.name}
+                            </span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                t.active
+                                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                  : 'bg-slate-500/15 text-slate-600 dark:text-slate-400'
+                              }`}
+                            >
+                              {t.active ? 'Activo' : 'De baja'}
+                            </span>
+                            <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
+                              {schemeText}
+                            </span>
+                            {linkedProfile && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:text-purple-300">
+                                <Link2 className="h-3 w-3" /> Cuenta Auth vinculada
+                              </span>
+                            )}
+                          </div>
 
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setConfirmAction({
-                            title: 'Eliminar profesor / monitor',
-                            description:
-                              tActivities.length > 0
-                                ? `"${t.name}" tiene ${tActivities.length} taller(es) asignado(s). ¿Seguro que deseas eliminarlo? Revisa si prefieres darle de baja en su lugar.`
-                                : `¿Seguro que quieres eliminar definitivamente la ficha del monitor "${t.name}"?`,
-                            confirmLabel: 'Eliminar monitor',
-                            tone: 'danger',
-                            onConfirm: async () => {
-                              await deleteTeacher(t.id);
+                          <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+                            {t.phone && (
+                              <span className="inline-flex items-center gap-1">
+                                <Phone className="h-3 w-3" /> {t.phone}
+                              </span>
+                            )}
+                            {t.email && (
+                              <span className="inline-flex items-center gap-1">
+                                <Mail className="h-3 w-3" /> {t.email}
+                              </span>
+                            )}
+                            <span>
+                              Cobro: {t.collectionType === 'association' ? 'Asociación' : 'Personal'}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                            {tActivities.length === 0 ? (
+                              <span className="text-[11px] text-slate-400 italic">
+                                Sin talleres asignados
+                              </span>
+                            ) : (
+                              tActivities.map(act => (
+                                <span
+                                  key={act.id}
+                                  className="rounded-lg bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200"
+                                >
+                                  {act.name}
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => onOpenAddTeacher(t)}
+                          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                          <span>Modificar</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateTeacher(t.id, { active: !t.active }).then(() => {
                               setActionFeedback({
                                 type: 'success',
-                                message: `Monitor "${t.name}" eliminado.`
+                                message: t.active
+                                  ? `Monitor "${t.name}" marcado como de baja.`
+                                  : `Monitor "${t.name}" reactivado.`
                               });
-                            }
-                          })
-                        }
-                        className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        <span>Eliminar</span>
-                      </button>
+                            })
+                          }
+                          className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
+                            !t.active
+                              ? 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                              : 'border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                          }`}
+                        >
+                          <Power className="h-3.5 w-3.5" />
+                          <span>{t.active ? 'Dar de baja' : 'Reactivar'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setConfirmAction({
+                              title: 'Eliminar profesor / monitor',
+                              description:
+                                tActivities.length > 0
+                                  ? `"${t.name}" tiene ${tActivities.length} taller(es) asignado(s). ¿Seguro que deseas eliminarlo? Revisa si prefieres darle de baja en su lugar.`
+                                  : `¿Seguro que quieres eliminar definitivamente la ficha del monitor "${t.name}"?`,
+                              confirmLabel: 'Eliminar monitor',
+                              tone: 'danger',
+                              onConfirm: async () => {
+                                await deleteTeacher(t.id);
+                                setActionFeedback({
+                                  type: 'success',
+                                  message: `Monitor "${t.name}" eliminado.`
+                                });
+                              }
+                            })
+                          }
+                          className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          <span>Eliminar</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -1552,92 +2129,171 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 return (
                   <div
                     key={p.id}
-                    className="py-3 flex flex-col md:flex-row md:items-center justify-between gap-3"
+                    className="py-2 md:py-3"
                   >
-                    <div className="flex items-center gap-3">
-                      {p.photoURL ? (
-                        <img
-                          src={p.photoURL}
-                          alt={p.name}
-                          className="h-10 w-10 rounded-full object-cover border border-emerald-500 shrink-0"
-                        />
-                      ) : (
-                        <div className="h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center text-sm shrink-0">
-                          {p.name.charAt(0) || 'U'}
-                        </div>
-                      )}
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-sm text-slate-900 dark:text-white">
-                            {p.name}
-                          </span>
-                          {isSelf && (
-                            <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-                              Tu usuario
-                            </span>
-                          )}
-                          {linkedTeacher && (
-                            <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
-                              Profesor: {linkedTeacher.name}
-                            </span>
-                          )}
-                          {linkedStudent && (
-                            <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                              Alumno: {linkedStudent.name}
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 block">
-                          {p.email}
+                    {/* Vista móvil: 1 fila compacta + botones solo icono */}
+                    <div className="flex md:hidden items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1 flex items-center gap-2">
+                        {p.photoURL ? (
+                          <img
+                            src={p.photoURL}
+                            alt={p.name}
+                            className="h-7 w-7 rounded-full object-cover border border-emerald-500 shrink-0"
+                          />
+                        ) : (
+                          <div className="h-7 w-7 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center text-xs shrink-0">
+                            {p.name.charAt(0) || 'U'}
+                          </div>
+                        )}
+                        <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
+                          {p.name}
                         </span>
+                        <span
+                          className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                            p.role === 'admin'
+                              ? 'bg-purple-500/15 text-purple-700 dark:text-purple-300'
+                              : p.role === 'teacher'
+                              ? 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300'
+                              : p.role === 'teacher_student'
+                              ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                              : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                          }`}
+                        >
+                          {p.role === 'admin'
+                            ? 'Admin'
+                            : p.role === 'teacher'
+                            ? 'Prof'
+                            : p.role === 'teacher_student'
+                            ? 'Híb'
+                            : 'Soc'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => openEditProfileModal(p)}
+                          title="Editar rol y vínculos"
+                          aria-label={`Editar perfil y vínculos de ${p.name}`}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
+                        {!isSelf && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setConfirmAction({
+                                title: 'Revocar acceso del usuario',
+                                description: `¿Seguro que quieres revocar el acceso de "${p.name}" (${p.email})? Ya no podrá entrar a la aplicación.`,
+                                confirmLabel: 'Sí, revocar acceso',
+                                tone: 'danger',
+                                onConfirm: async () => {
+                                  await deleteUserAccess(p.id);
+                                  setActionFeedback({
+                                    type: 'success',
+                                    message: `Acceso revocado para "${p.name}".`
+                                  });
+                                }
+                              })
+                            }
+                            title="Revocar acceso"
+                            aria-label={`Revocar acceso de ${p.name}`}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 shrink-0">
-                      <select
-                        value={p.role}
-                        onChange={e => updateUserRole(p.id, e.target.value as UserRole)}
-                        className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200"
-                      >
-                        <option value="student">Alumno / Socio</option>
-                        <option value="teacher">Profesor / Monitor</option>
-                        <option value="teacher_student">Monitor-Alumno</option>
-                        <option value="admin">Administrador</option>
-                      </select>
+                    {/* Vista escritorio */}
+                    <div className="hidden md:flex md:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        {p.photoURL ? (
+                          <img
+                            src={p.photoURL}
+                            alt={p.name}
+                            className="h-10 w-10 rounded-full object-cover border border-emerald-500 shrink-0"
+                          />
+                        ) : (
+                          <div className="h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center text-sm shrink-0">
+                            {p.name.charAt(0) || 'U'}
+                          </div>
+                        )}
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-bold text-sm text-slate-900 dark:text-white">
+                              {p.name}
+                            </span>
+                            {isSelf && (
+                              <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                                Tu usuario
+                              </span>
+                            )}
+                            {linkedTeacher && (
+                              <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
+                                Profesor: {linkedTeacher.name}
+                              </span>
+                            )}
+                            {linkedStudent && (
+                              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+                                Alumno: {linkedStudent.name}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 block">
+                            {p.email}
+                          </span>
+                        </div>
+                      </div>
 
-                      <button
-                        type="button"
-                        onClick={() => openEditProfileModal(p)}
-                        className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
-                      >
-                        <Edit2 className="h-3.5 w-3.5" />
-                        <span>Editar vínculos</span>
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        <select
+                          value={p.role}
+                          onChange={e => updateUserRole(p.id, e.target.value as UserRole)}
+                          className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200"
+                        >
+                          <option value="student">Alumno / Socio</option>
+                          <option value="teacher">Profesor / Monitor</option>
+                          <option value="teacher_student">Monitor-Alumno</option>
+                          <option value="admin">Administrador</option>
+                        </select>
 
-                      {!isSelf && (
                         <button
                           type="button"
-                          onClick={() =>
-                            setConfirmAction({
-                              title: 'Revocar acceso del usuario',
-                              description: `¿Seguro que quieres revocar el acceso de "${p.name}" (${p.email})? Ya no podrá entrar a la aplicación.`,
-                              confirmLabel: 'Sí, revocar acceso',
-                              tone: 'danger',
-                              onConfirm: async () => {
-                                await deleteUserAccess(p.id);
-                                setActionFeedback({
-                                  type: 'success',
-                                  message: `Acceso revocado para "${p.name}".`
-                                });
-                              }
-                            })
-                          }
-                          className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
+                          onClick={() => openEditProfileModal(p)}
+                          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          <span>Revocar</span>
+                          <Edit2 className="h-3.5 w-3.5" />
+                          <span>Editar vínculos</span>
                         </button>
-                      )}
+
+                        {!isSelf && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setConfirmAction({
+                                title: 'Revocar acceso del usuario',
+                                description: `¿Seguro que quieres revocar el acceso de "${p.name}" (${p.email})? Ya no podrá entrar a la aplicación.`,
+                                confirmLabel: 'Sí, revocar acceso',
+                                tone: 'danger',
+                                onConfirm: async () => {
+                                  await deleteUserAccess(p.id);
+                                  setActionFeedback({
+                                    type: 'success',
+                                    message: `Acceso revocado para "${p.name}".`
+                                  });
+                                }
+                              })
+                            }
+                            className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            <span>Revocar</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );

@@ -71,7 +71,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
         periodMonth,
         paymentMethod,
         status,
-        paymentDate: status === 'paid' ? paymentDate : undefined,
+        paymentDate: status === 'paid' || status === 'partial' ? paymentDate : undefined,
         collectedByTeacher,
         collectedByTeacherId: collectedByTeacher ? collectedByTeacherId : undefined,
         notes
@@ -86,7 +86,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
         periodMonth,
         paymentMethod,
         status,
-        paymentDate: status === 'paid' ? paymentDate : undefined,
+        paymentDate: status === 'paid' || status === 'partial' ? paymentDate : undefined,
         collectedByTeacher,
         collectedByTeacherId: collectedByTeacher ? collectedByTeacherId : undefined,
         notes
@@ -215,14 +215,30 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500 font-bold"
                 >
                   <option value="paid">✓ Pagado</option>
+                  <option value="partial">◐ Pago parcial</option>
                   <option value="pending">⏳ Pendiente</option>
                   <option value="overdue">⚠️ Con retraso</option>
                 </select>
               </div>
             </div>
 
+            {status === 'paid' && defaultAmt > 0 && Number(amount) > 0 && Number(amount) < defaultAmt && (
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-500/35 bg-amber-50/70 dark:bg-amber-950/25 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+                <span>
+                  El importe ({Number(amount).toFixed(2)} €) es inferior a la cuota estándar ({defaultAmt.toFixed(2)} €).
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setStatus('partial')}
+                  className="shrink-0 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition whitespace-nowrap"
+                >
+                  Marcar Pago parcial
+                </button>
+              </div>
+            )}
+
             {/* Fecha de Pago y Método (con espacio generoso para selector de fecha) */}
-            {status === 'paid' && (
+            {(status === 'paid' || status === 'partial') && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -245,7 +261,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                     onChange={e => setPaymentMethod(e.target.value as PaymentMethod)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
                   >
-                    <option value="cash">Efectivo / En mano</option>
+                    <option value="cash">En Mano</option>
                     <option value="transfer">Transferencia bancaria</option>
                     <option value="bizum">Bizum</option>
                     <option value="card">Tarjeta de débito/crédito</option>

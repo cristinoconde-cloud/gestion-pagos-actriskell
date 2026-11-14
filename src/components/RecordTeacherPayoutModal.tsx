@@ -16,7 +16,7 @@ export const RecordTeacherPayoutModal: React.FC<RecordTeacherPayoutModalProps> =
   const { teacher, calculatedDue, collectedInHand, alreadySettled, balanceToPay, classesCount, grossActivityRevenue } = summary;
 
   const [payoutAmount, setPayoutAmount] = useState<number>(balanceToPay);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(teacher.preferredPaymentMethod || 'transfer');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(teacher.preferredPaymentMethod || 'cash');
   const [notes, setNotes] = useState<string>('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -146,9 +146,9 @@ export const RecordTeacherPayoutModal: React.FC<RecordTeacherPayoutModalProps> =
                   onChange={e => setPaymentMethod(e.target.value as PaymentMethod)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500 font-semibold"
                 >
+                  <option value="cash">En Mano</option>
                   <option value="transfer">Transferencia bancaria</option>
                   <option value="bizum">Bizum</option>
-                  <option value="cash">Efectivo en mano</option>
                 </select>
               </div>
             </div>

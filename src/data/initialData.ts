@@ -663,12 +663,6 @@ export const INITIAL_APP_CONFIGS: AppConfigSetting[] = [
     description: 'Aviso emergente mostrado al entrar a la aplicación tras la pantalla de bienvenida'
   },
   {
-    config_key: 'google_calendar',
-    config_value: 'triskell_calendario_general@actriskell.org',
-    is_active: true,
-    description: 'Integración y visualización del calendario en vivo con tira semanal de 7 días'
-  },
-  {
     config_key: 'news_enabled',
     config_value: 'Tablón de avisos y últimas notas activo para todos los usuarios',
     is_active: true,

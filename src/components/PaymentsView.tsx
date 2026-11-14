@@ -30,12 +30,41 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     activities,
     students,
     markPaymentPaid,
+    updatePayment,
     deletePayment
   } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedActivityId, setSelectedActivityId] = useState<string>('all');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
+  const [paymentToDelete, setPaymentToDelete] = useState<PaymentRecord | null>(null);
+
+  const getExpectedFee = (payment: PaymentRecord) => {
+    const act = activities.find(a => a.id === payment.activityId);
+    const stu = students.find(s => s.id === payment.studentId);
+    const enr = stu?.activities.find(a => a.activityId === payment.activityId);
+    if (enr?.customPrice !== undefined) return enr.customPrice;
+    if (!act) return payment.amount;
+    return act.billingMode === 'per_class' ? act.defaultPricePerClass : act.defaultPriceMonthly;
+  };
+
+  const handleCompletePayment = async (payment: PaymentRecord) => {
+    if (payment.status === 'partial') {
+      const expectedFee = getExpectedFee(payment);
+      const targetAmount = expectedFee > payment.amount ? expectedFee : payment.amount;
+      await updatePayment(payment.id, {
+        status: 'paid',
+        amount: targetAmount,
+        paymentDate: new Date().toISOString().split('T')[0],
+        notes:
+          expectedFee > payment.amount
+            ? `Cuota completada (${targetAmount.toFixed(2)} €)`
+            : payment.notes
+      });
+    } else {
+      await markPaymentPaid(payment.id);
+    }
+  };
 
   const filteredPayments = useMemo(() => {
     return periodPayments.filter(p => {
@@ -51,6 +80,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
       // Status filter
       let matchesStatus = true;
       if (selectedStatusFilter === 'paid') matchesStatus = p.status === 'paid';
+      else if (selectedStatusFilter === 'partial') matchesStatus = p.status === 'partial';
       else if (selectedStatusFilter === 'pending') matchesStatus = p.status === 'pending' || p.status === 'overdue';
       else if (selectedStatusFilter === 'teacher_collected') matchesStatus = p.collectedByTeacher;
 
@@ -60,11 +90,16 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
 
   const totalFilteredAmount = filteredPayments.reduce((acc, p) => acc + p.amount, 0);
   const paidFilteredAmount = filteredPayments
-    .filter(p => p.status === 'paid')
+    .filter(p => p.status === 'paid' || p.status === 'partial')
     .reduce((acc, p) => acc + p.amount, 0);
-  const pendingFilteredAmount = filteredPayments
-    .filter(p => p.status === 'pending' || p.status === 'overdue')
-    .reduce((acc, p) => acc + p.amount, 0);
+  const pendingFilteredAmount = filteredPayments.reduce((acc, p) => {
+    if (p.status === 'pending' || p.status === 'overdue') return acc + p.amount;
+    if (p.status === 'partial') {
+      const rem = Math.max(0, getExpectedFee(p) - p.amount);
+      return acc + rem;
+    }
+    return acc;
+  }, 0);
 
   const handleWhatsAppReminder = (payment: PaymentRecord) => {
     const student = students.find(s => s.id === payment.studentId);
@@ -119,6 +154,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           >
             <option value="all">Todos los Estados</option>
             <option value="paid">Solo Pagados</option>
+            <option value="partial">Solo Parciales</option>
             <option value="pending">Solo Pendientes</option>
             <option value="teacher_collected">Cobrados en Mano por Monitor</option>
           </select>
@@ -189,6 +225,18 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                       <CheckCircle2 className="h-3.5 w-3.5" />
                       Pagado
                     </span>
+                  ) : p.status === 'partial' ? (
+                    <div className="inline-flex flex-col items-end">
+                      <span className="inline-flex items-center gap-1 font-bold text-orange-600 dark:text-orange-400 text-[11px]">
+                        <Clock className="h-3.5 w-3.5" />
+                        Pago parcial
+                      </span>
+                      {getExpectedFee(p) > p.amount && (
+                        <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                          Falta {(getExpectedFee(p) - p.amount).toFixed(2)} €
+                        </span>
+                      )}
+                    </div>
                   ) : (
                     <span className="inline-flex items-center gap-1 font-bold text-amber-600 dark:text-amber-400 text-[11px]">
                       <Clock className="h-3.5 w-3.5" />
@@ -220,10 +268,10 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                 <div className="flex items-center gap-1.5">
                   {p.status !== 'paid' && (
                     <button
-                      onClick={() => markPaymentPaid(p.id)}
+                      onClick={() => handleCompletePayment(p)}
                       className="rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 min-h-[40px] shadow-xs"
                     >
-                      Cobrar Ahora
+                      {p.status === 'partial' ? 'Completar' : 'Cobrar Ahora'}
                     </button>
                   )}
                   <button
@@ -288,7 +336,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                     </td>
                     <td className="py-3 px-4">
                       <div className="capitalize font-medium">
-                        {p.paymentMethod === 'cash' ? 'Efectivo' : p.paymentMethod}
+                        {p.paymentMethod === 'cash' ? 'En Mano' : p.paymentMethod}
                       </div>
                       {p.collectedByTeacher && (
                         <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
@@ -305,6 +353,18 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                           <CheckCircle2 className="h-3.5 w-3.5" />
                           Pagado
                         </span>
+                      ) : p.status === 'partial' ? (
+                        <div className="inline-flex flex-col">
+                          <span className="inline-flex items-center gap-1 font-bold text-orange-600 dark:text-orange-400 text-xs">
+                            <Clock className="h-3.5 w-3.5" />
+                            Pago parcial
+                          </span>
+                          {getExpectedFee(p) > p.amount && (
+                            <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                              Falta {(getExpectedFee(p) - p.amount).toFixed(2)} € (cuota {getExpectedFee(p).toFixed(2)} €)
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span className="inline-flex items-center gap-1 font-bold text-amber-600 dark:text-amber-400 text-xs">
                           <Clock className="h-3.5 w-3.5" />
@@ -324,10 +384,10 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                               <MessageCircle className="h-4 w-4" />
                             </button>
                             <button
-                              onClick={() => markPaymentPaid(p.id)}
+                              onClick={() => handleCompletePayment(p)}
                               className="rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition"
                             >
-                              Cobrado
+                              {p.status === 'partial' ? 'Completar' : 'Cobrado'}
                             </button>
                           </>
                         )}
@@ -341,11 +401,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                         </button>
 
                         <button
-                          onClick={() => {
-                            if (window.confirm(`¿Eliminar el registro ${p.receiptNumber}?`)) {
-                              deletePayment(p.id);
-                            }
-                          }}
+                          onClick={() => setPaymentToDelete(p)}
                           title="Eliminar registro"
                           className="rounded-lg p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800 transition"
                         >
@@ -360,6 +416,46 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Modal de confirmación in-app para eliminar pago */}
+      {paymentToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-500/15 text-rose-600">
+                <AlertCircle className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Eliminar registro de pago
+                </h3>
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                  ¿Seguro que quieres eliminar el recibo <strong>{paymentToDelete.receiptNumber}</strong> de {paymentToDelete.studentName} ({paymentToDelete.amount.toFixed(2)} €)?
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPaymentToDelete(null)}
+                className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await deletePayment(paymentToDelete.id);
+                  setPaymentToDelete(null);
+                }}
+                className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 transition"
+              >
+                Sí, eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

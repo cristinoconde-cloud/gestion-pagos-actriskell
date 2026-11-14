@@ -16,7 +16,7 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ isOpen, onClos
   const [amount, setAmount] = useState<number>(0);
   const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [periodMonth, setPeriodMonth] = useState<string>(selectedPeriod);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('transfer');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -165,9 +165,9 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ isOpen, onClos
                   onChange={e => setPaymentMethod(e.target.value as PaymentMethod)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
                 >
+                  <option value="cash">En Mano</option>
                   <option value="transfer">Transferencia bancaria</option>
                   <option value="card">Tarjeta del centro</option>
-                  <option value="cash">Efectivo / Caja</option>
                   <option value="bizum">Bizum</option>
                 </select>
               </div>

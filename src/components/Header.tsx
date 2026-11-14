@@ -60,6 +60,7 @@ export const Header: React.FC<HeaderProps> = ({
     setCurrentTeacherId,
     currentUser,
     students,
+    activities,
     setIsAuthModalOpen,
     isDarkMode,
     toggleDarkMode,
@@ -68,9 +69,25 @@ export const Header: React.FC<HeaderProps> = ({
     isLoadingDb
   } = useApp();
 
-  const pendingValidationCount = students.filter(
-    s => s.status === 'pending_validation' || s.validationStatus === 'pending'
-  ).length;
+  const pendingEnrollmentRequestsCount = students.reduce(
+    (sum, s) => sum + (s.pendingEnrollments?.length || 0),
+    0
+  );
+
+  const pendingValidationCount =
+    students.filter(
+      s => s.status === 'pending_validation' || s.validationStatus === 'pending'
+    ).length + pendingEnrollmentRequestsCount;
+
+  const teacherActivityIds = new Set(
+    activities.filter(a => a.teacherId === currentTeacherId).map(a => a.id)
+  );
+  const teacherPendingRequestsCount = students.reduce(
+    (sum, s) =>
+      sum +
+      (s.pendingEnrollments || []).filter(p => teacherActivityIds.has(p.activityId)).length,
+    0
+  );
 
   const [showNewMenu, setShowNewMenu] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -511,11 +528,12 @@ export const Header: React.FC<HeaderProps> = ({
           {currentRole === 'teacher' && (
             <>
               {[
-                { id: 'teacher-portal', label: 'Portal', icon: GraduationCap },
-                { id: 'calendar', label: 'Calendario', icon: Calendar },
-                { id: 'activities', label: 'Clase/Taller', icon: Sparkles },
-                { id: 'teacher-payouts', label: 'Mis liquidaciones', icon: DollarSign },
-                { id: 'profile', label: 'Perfil', icon: User }
+                { id: 'teacher-portal', label: 'Portal', icon: GraduationCap, badge: 0 },
+                { id: 'teacher-students', label: 'Alumnos', icon: Users, badge: teacherPendingRequestsCount },
+                { id: 'calendar', label: 'Calendario', icon: Calendar, badge: 0 },
+                { id: 'activities', label: 'Clase/Taller', icon: Sparkles, badge: 0 },
+                { id: 'teacher-payouts', label: 'Mis liquidaciones', icon: DollarSign, badge: 0 },
+                { id: 'profile', label: 'Perfil', icon: User, badge: 0 }
               ].map(tab => {
                 const Icon = tab.icon;
                 const isActive = currentTab === tab.id;
@@ -532,6 +550,15 @@ export const Header: React.FC<HeaderProps> = ({
                   >
                     <Icon className="h-3.5 w-3.5 shrink-0" />
                     <span>{tab.label}</span>
+                    {tab.badge > 0 && (
+                      <span
+                        className={`rounded-full px-1.5 py-0.2 text-[10px] font-black ${
+                          isActive ? 'bg-white text-indigo-700' : 'bg-amber-500 text-white'
+                        }`}
+                      >
+                        {tab.badge}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -570,11 +597,12 @@ export const Header: React.FC<HeaderProps> = ({
           {currentRole === 'teacher_student' && (
             <>
               {[
-                { id: 'teacher-portal', label: 'Portal Monitor', icon: GraduationCap },
-                { id: 'student-portal', label: 'Portal Alumno', icon: BookOpen },
-                { id: 'calendar', label: 'Calendario', icon: Calendar },
-                { id: 'activities', label: 'Clases/Taller', icon: Sparkles },
-                { id: 'profile', label: 'Perfil', icon: User }
+                { id: 'teacher-portal', label: 'Portal Monitor', icon: GraduationCap, badge: 0 },
+                { id: 'teacher-students', label: 'Alumnos', icon: Users, badge: teacherPendingRequestsCount },
+                { id: 'student-portal', label: 'Portal Alumno', icon: BookOpen, badge: 0 },
+                { id: 'calendar', label: 'Calendario', icon: Calendar, badge: 0 },
+                { id: 'activities', label: 'Clases/Taller', icon: Sparkles, badge: 0 },
+                { id: 'profile', label: 'Perfil', icon: User, badge: 0 }
               ].map(tab => {
                 const Icon = tab.icon;
                 const isActive = currentTab === tab.id;
@@ -591,6 +619,15 @@ export const Header: React.FC<HeaderProps> = ({
                   >
                     <Icon className="h-3.5 w-3.5 shrink-0" />
                     <span>{tab.label}</span>
+                    {tab.badge > 0 && (
+                      <span
+                        className={`rounded-full px-1.5 py-0.2 text-[10px] font-black ${
+                          isActive ? 'bg-white text-emerald-700' : 'bg-amber-500 text-white'
+                        }`}
+                      >
+                        {tab.badge}
+                      </span>
+                    )}
                   </button>
                 );
               })}

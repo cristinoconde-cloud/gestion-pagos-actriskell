@@ -24,12 +24,27 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   setCurrentTab,
   onOpenRecordPayment
 }) => {
-  const { periodPayments, currentRole, currentUser, students } = useApp();
+  const { periodPayments, currentRole, currentUser, students, activities, currentTeacherId } = useApp();
 
   const pendingCount = periodPayments.filter(p => p.status === 'pending' || p.status === 'overdue').length;
-  const pendingValidationCount = students.filter(
-    s => s.status === 'pending_validation' || s.validationStatus === 'pending'
-  ).length;
+  const pendingEnrollmentRequestsCount = students.reduce(
+    (sum, s) => sum + (s.pendingEnrollments?.length || 0),
+    0
+  );
+  const pendingValidationCount =
+    students.filter(
+      s => s.status === 'pending_validation' || s.validationStatus === 'pending'
+    ).length + pendingEnrollmentRequestsCount;
+
+  const teacherActivityIds = new Set(
+    activities.filter(a => a.teacherId === currentTeacherId).map(a => a.id)
+  );
+  const teacherPendingRequestsCount = students.reduce(
+    (sum, s) =>
+      sum +
+      (s.pendingEnrollments || []).filter(p => teacherActivityIds.has(p.activityId)).length,
+    0
+  );
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 md:hidden border-t border-slate-200/90 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg pb-[env(safe-area-inset-bottom)] shadow-lg no-print">
@@ -110,7 +125,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           </>
         )}
 
-        {/* ROL: MONITOR (Exactamente 5 pestañas: Portal, Calendario, Clase/Taller, Mis liquidaciones, Perfil) */}
+        {/* ROL: MONITOR (Portal, Alumnos, Calendario, Talleres, Liquidaciones, Perfil) */}
         {currentRole === 'teacher' && (
           <>
             <button
@@ -122,7 +137,24 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <GraduationCap className="h-5 w-5" />
-              <span className="text-[9.5px] mt-1 tracking-tight whitespace-nowrap">Portal</span>
+              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">Portal</span>
+            </button>
+
+            <button
+              onClick={() => setCurrentTab('teacher-students')}
+              className={`relative flex flex-col items-center justify-center flex-1 py-1 transition-colors min-h-[44px] ${
+                currentTab === 'teacher-students'
+                  ? 'text-indigo-600 dark:text-indigo-400 font-bold'
+                  : 'text-slate-500 dark:text-slate-400'
+              }`}
+            >
+              <Users className="h-5 w-5" />
+              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">Alumnos</span>
+              {teacherPendingRequestsCount > 0 && (
+                <span className="absolute top-1 right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-black text-white shadow-xs">
+                  {teacherPendingRequestsCount}
+                </span>
+              )}
             </button>
 
             <button
@@ -134,7 +166,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <Calendar className="h-5 w-5" />
-              <span className="text-[9.5px] mt-1 tracking-tight whitespace-nowrap">Calendario</span>
+              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">Agenda</span>
             </button>
 
             <button
@@ -146,7 +178,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <Sparkles className="h-5 w-5" />
-              <span className="text-[9.5px] mt-1 tracking-tight whitespace-nowrap">Clase/Taller</span>
+              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">Talleres</span>
             </button>
 
             <button
@@ -158,7 +190,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <DollarSign className="h-5 w-5" />
-              <span className="text-[9px] mt-1 tracking-tighter whitespace-nowrap">Mis liquidaciones</span>
+              <span className="text-[8.5px] mt-1 tracking-tighter whitespace-nowrap">Liquidac.</span>
             </button>
           </>
         )}
@@ -216,7 +248,24 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <GraduationCap className="h-5 w-5" />
-              <span className="text-[9.5px] mt-1 tracking-tight whitespace-nowrap">Monitor</span>
+              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">Monitor</span>
+            </button>
+
+            <button
+              onClick={() => setCurrentTab('teacher-students')}
+              className={`relative flex flex-col items-center justify-center flex-1 py-1 transition-colors min-h-[44px] ${
+                currentTab === 'teacher-students'
+                  ? 'text-indigo-600 dark:text-indigo-400 font-bold'
+                  : 'text-slate-500 dark:text-slate-400'
+              }`}
+            >
+              <Users className="h-5 w-5" />
+              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">Alumnos</span>
+              {teacherPendingRequestsCount > 0 && (
+                <span className="absolute top-1 right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-black text-white shadow-xs">
+                  {teacherPendingRequestsCount}
+                </span>
+              )}
             </button>
 
             <button
@@ -228,7 +277,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <BookOpen className="h-5 w-5" />
-              <span className="text-[9.5px] mt-1 tracking-tight whitespace-nowrap">Alumno</span>
+              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">Alumno</span>
             </button>
 
             <button
@@ -240,7 +289,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <Calendar className="h-5 w-5" />
-              <span className="text-[9.5px] mt-1 tracking-tight whitespace-nowrap">Calendario</span>
+              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">Agenda</span>
             </button>
 
             <button
@@ -252,7 +301,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <Sparkles className="h-5 w-5" />
-              <span className="text-[9.5px] mt-1 tracking-tight whitespace-nowrap">Clases/Taller</span>
+              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">Talleres</span>
             </button>
           </>
         )}

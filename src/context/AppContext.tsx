@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Teacher,
   Activity,
@@ -139,11 +139,15 @@ interface AppContextType {
   deletePayment: (id: string) => Promise<void>;
   markPaymentPaid: (id: string, method?: PaymentMethod) => Promise<void>;
 
-  addStudent: (student: Omit<Student, 'id' | 'registeredAt'>) => Promise<void>;
-  updateStudent: (id: string, updates: Partial<Student>) => Promise<void>;
+  addStudent: (student: Omit<Student, 'id' | 'registeredAt'>) => Promise<{ success: boolean; error?: string }>;
+  updateStudent: (id: string, updates: Partial<Student>) => Promise<{ success: boolean; error?: string }>;
   deleteStudent: (id: string) => Promise<void>;
   enrollStudentInActivity: (studentId: string, activityId: string, customPrice?: number) => Promise<{ success: boolean; error?: string }>;
   unenrollStudentFromActivity: (studentId: string, activityId: string) => Promise<{ success: boolean; error?: string }>;
+  requestActivityEnrollment: (activityId: string, studentId?: string) => Promise<{ success: boolean; error?: string; studentId?: string }>;
+  cancelActivityEnrollmentRequest: (studentId: string, activityId: string) => Promise<{ success: boolean; error?: string }>;
+  confirmActivityEnrollment: (studentId: string, activityId: string) => Promise<{ success: boolean; error?: string }>;
+  rejectActivityEnrollment: (studentId: string, activityId: string) => Promise<{ success: boolean; error?: string }>;
   enrollUserFromProfile: (params: {
     profile: {
       id: string;
@@ -258,6 +262,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const refreshSeqRef = useRef(0);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [expenses, setExpenses] = useState<CenterExpense[]>([]);
   const [sessions, setSessions] = useState<ClassSession[]>([]);
@@ -267,7 +272,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [appConfigs, setAppConfigs] = useState<AppConfigSetting[]>(() => {
     try {
       const local = localStorage.getItem('triskell_app_configs');
-      return local ? JSON.parse(local) : INITIAL_APP_CONFIGS;
+      const parsed: AppConfigSetting[] = local ? JSON.parse(local) : INITIAL_APP_CONFIGS;
+      return parsed.filter(c => c.config_key !== 'google_calendar');
     } catch {
       return INITIAL_APP_CONFIGS;
     }
@@ -318,11 +324,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Carga completa de datos desde Supabase
   const refreshFromSupabase = useCallback(async () => {
+    const requestSeq = ++refreshSeqRef.current;
     try {
       setIsLoadingDb(true);
 
       // 1. Cargar Usuarios / Perfiles Autorizados
       const profilesRes = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+      if (requestSeq !== refreshSeqRef.current) return;
       if (!profilesRes.error && profilesRes.data) {
         setProfiles(
           profilesRes.data.map(p => ({
@@ -341,18 +349,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // 2. Cargar Monitores
       const teachersRes = await supabase.from('teachers').select('*').order('name');
+      if (requestSeq !== refreshSeqRef.current) return;
       if (teachersRes.error) {
         handleSupabaseError('Cargar monitores', teachersRes.error);
       } else {
         const loadedTeachers = (teachersRes.data || []).map(mapDbTeacherToTeacher);
         setTeachers(loadedTeachers);
-        if (loadedTeachers.length > 0 && !currentTeacherId) {
-          setCurrentTeacherId(loadedTeachers[0].id);
+        if (loadedTeachers.length > 0) {
+          setCurrentTeacherId(prev => prev || loadedTeachers[0].id);
         }
       }
 
       // 3. Cargar Talleres / Actividades
       const activitiesRes = await supabase.from('activities').select('*').order('name');
+      if (requestSeq !== refreshSeqRef.current) return;
       if (activitiesRes.error) {
         handleSupabaseError('Cargar talleres', activitiesRes.error);
       } else {
@@ -365,15 +375,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         supabase.from('students').select('*').order('name'),
         supabase.from('student_enrollments').select('*')
       ]);
+      if (requestSeq !== refreshSeqRef.current) return;
 
       if (studentsRes.error) {
         handleSupabaseError('Cargar alumnos', studentsRes.error);
       } else {
+        const hasEnrollmentsError = Boolean(enrollmentsRes.error);
         const enrollments = enrollmentsRes.data || [];
-        const loadedStudents = (studentsRes.data || []).map(row => mapDbStudentToStudent(row, enrollments));
-        setStudents(loadedStudents);
-        if (loadedStudents.length > 0 && !currentStudentId) {
-          setCurrentStudentId(loadedStudents[0].id);
+        setStudents(prev => {
+          const prevById = new Map(prev.map(s => [s.id, s]));
+          return (studentsRes.data || []).map(row => {
+            const mapped = mapDbStudentToStudent(row, enrollments);
+            if (hasEnrollmentsError) {
+              const existing = prevById.get(row.id);
+              if (existing) {
+                return {
+                  ...mapped,
+                  activities: existing.activities,
+                  pendingEnrollments: existing.pendingEnrollments
+                };
+              }
+            }
+            return mapped;
+          });
+        });
+        const firstStudentId = studentsRes.data?.[0]?.id;
+        if (firstStudentId) {
+          setCurrentStudentId(prev => prev || firstStudentId);
         }
       }
 
@@ -434,14 +462,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const configRes = await supabase.from('app_config').select('*');
         if (!configRes.error && configRes.data && configRes.data.length > 0) {
-          const loadedConfigs: AppConfigSetting[] = configRes.data.map((c: any) => ({
-            id: c.id,
-            config_key: c.config_key,
-            config_value: c.config_value,
-            is_active: Boolean(c.is_active),
-            description: c.description,
-            updated_at: c.updated_at
-          }));
+          const loadedConfigs: AppConfigSetting[] = configRes.data
+            .filter((c: any) => c.config_key !== 'google_calendar')
+            .map((c: any) => ({
+              id: c.id,
+              config_key: c.config_key,
+              config_value: c.config_value,
+              is_active: Boolean(c.is_active),
+              description: c.description,
+              updated_at: c.updated_at
+            }));
           setAppConfigs(loadedConfigs);
           localStorage.setItem('triskell_app_configs', JSON.stringify(loadedConfigs));
         }
@@ -473,9 +503,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (err: any) {
       handleSupabaseError('Sincronización general', err);
     } finally {
-      setIsLoadingDb(false);
+      if (requestSeq === refreshSeqRef.current) {
+        setIsLoadingDb(false);
+      }
     }
-  }, [handleSupabaseError, currentTeacherId, currentStudentId]);
+  }, [handleSupabaseError]);
 
   // Cargar perfil del usuario desde Supabase auth.users y public.profiles con control estricto de autorización (Whitelisting)
   const syncUserProfile = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
@@ -1322,89 +1354,320 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Alumnos y Matrículas
-  const addStudent = async (student: Omit<Student, 'id' | 'registeredAt'>) => {
+  const upsertEnrollmentRow = async (
+    studentId: string,
+    activityId: string,
+    customPrice?: number,
+    billingMode?: 'monthly' | 'per_class',
+    enrolledSince?: string,
+    status: 'active' | 'pending' | 'rejected' = 'active',
+    extraFields?: Record<string, any>
+  ): Promise<{ data?: any; error: any }> => {
+    const act = activities.find(a => a.id === activityId);
+    const basePayload = {
+      student_id: studentId,
+      activity_id: activityId,
+      custom_price: customPrice !== undefined ? customPrice : null,
+      billing_mode: billingMode || act?.billingMode || 'monthly',
+      enrolled_since: enrolledSince || new Date().toISOString().split('T')[0]
+    };
+    const activePayload = { ...basePayload, active: status !== 'rejected' };
+    const fullPayload = { ...activePayload, status, ...(extraFields || {}) };
+
+    const tryUpsert = async (payload: Record<string, any>) => {
+      const res = await supabase
+        .from('student_enrollments')
+        .upsert(payload, { onConflict: 'student_id,activity_id' })
+        .select('*');
+
+      if (
+        res.error &&
+        (res.error.code === '42P10' || res.error.message?.includes('no unique or exclusion constraint'))
+      ) {
+        const { data: existing } = await supabase
+          .from('student_enrollments')
+          .select('id')
+          .eq('student_id', studentId)
+          .eq('activity_id', activityId)
+          .maybeSingle();
+
+        if (existing?.id) {
+          return await supabase
+            .from('student_enrollments')
+            .update(payload)
+            .eq('id', existing.id)
+            .select('*');
+        }
+        return await supabase.from('student_enrollments').insert([payload]).select('*');
+      }
+      return res;
+    };
+
+    let res = await tryUpsert(fullPayload);
+    if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
+      if (extraFields && Object.keys(extraFields).length > 0) {
+        res = await tryUpsert({ ...activePayload, status });
+      }
+      if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
+        if (status === 'pending') {
+          return {
+            error: new Error(
+              'Falta la columna "status" en la tabla "student_enrollments" de Supabase. Ejecuta el script SQL proporcionado para habilitar solicitudes pendientes.'
+            )
+          };
+        }
+        res = await tryUpsert(activePayload);
+        if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
+          res = await tryUpsert(basePayload);
+        }
+      }
+    }
+    return res;
+  };
+
+  const addStudent = async (
+    student: Omit<Student, 'id' | 'registeredAt'>
+  ): Promise<{ success: boolean; error?: string }> => {
     clearDbError();
-    const studentDb = {
+    const isPending = student.status === 'pending_validation';
+    const baseStudentDb = {
       name: student.name,
       email: student.email || null,
       phone: student.phone || null,
       status: student.status,
       notes: student.notes || null
     };
+    const extendedStudentDb = {
+      ...baseStudentDb,
+      validation_status: isPending ? 'pending' : student.status === 'inactive' ? 'rejected' : 'validated',
+      registered_by: currentUser?.id || null
+    };
 
-    const { data: newStudentRow, error: studentErr } = await supabase
+    let insertRes = await supabase
       .from('students')
-      .insert([studentDb])
+      .insert([extendedStudentDb])
       .select()
       .single();
 
-    if (studentErr) {
-      handleSupabaseError('Alta de alumno', studentErr);
-      return;
+    if (
+      insertRes.error &&
+      (insertRes.error.code === '42703' ||
+        insertRes.error.code === '23503' ||
+        insertRes.error.code === '22P02' ||
+        insertRes.error.message?.includes('column'))
+    ) {
+      insertRes = await supabase
+        .from('students')
+        .insert([baseStudentDb])
+        .select()
+        .single();
     }
 
+    if (
+      insertRes.error &&
+      isPending &&
+      (insertRes.error.message?.includes('students_status_check') || insertRes.error.code === '23514')
+    ) {
+      const markedNotes = baseStudentDb.notes?.includes('[Pendiente validación]')
+        ? baseStudentDb.notes
+        : `[Pendiente validación] ${baseStudentDb.notes || ''}`.trim();
+      insertRes = await supabase
+        .from('students')
+        .insert([{ ...baseStudentDb, status: 'trial', notes: markedNotes }])
+        .select()
+        .single();
+    }
+
+    if (insertRes.error) {
+      handleSupabaseError('Alta de alumno', insertRes.error);
+      return { success: false, error: insertRes.error.message };
+    }
+
+    const newStudentRow = insertRes.data;
     if (newStudentRow) {
       if (student.activities && student.activities.length > 0) {
-        const enrollmentsDb = student.activities.map(act => ({
-          student_id: newStudentRow.id,
-          activity_id: act.activityId,
-          custom_price: act.customPrice || null,
-          billing_mode: act.billingMode,
-          enrolled_since: act.enrolledSince || new Date().toISOString().split('T')[0]
-        }));
-        await supabase.from('student_enrollments').insert(enrollmentsDb);
+        for (const act of student.activities) {
+          await upsertEnrollmentRow(
+            newStudentRow.id,
+            act.activityId,
+            act.customPrice,
+            act.billingMode,
+            act.enrolledSince
+          );
+        }
       }
       await refreshFromSupabase();
     }
+    return { success: true };
   };
 
-  const updateStudent = async (id: string, updates: Partial<Student>) => {
+  const updateStudent = async (
+    id: string,
+    updates: Partial<Student>
+  ): Promise<{ success: boolean; error?: string }> => {
     clearDbError();
-    const studentDb: any = {};
+    const existingStudent = students.find(s => s.id === id);
+    const studentDb: Record<string, any> = {};
+
     if (updates.name !== undefined) studentDb.name = updates.name;
     if (updates.email !== undefined) studentDb.email = updates.email || null;
     if (updates.phone !== undefined) studentDb.phone = updates.phone || null;
+
     if (updates.status !== undefined) {
       studentDb.status = updates.status;
       if (updates.status === 'pending_validation') {
         studentDb.validation_status = 'pending';
-      } else if (updates.status === 'active' || updates.status === 'trial') {
+      } else if (updates.status === 'inactive') {
+        studentDb.validation_status = 'rejected';
+      } else {
         studentDb.validation_status = 'validated';
       }
     }
-    if (updates.notes !== undefined) studentDb.notes = updates.notes || null;
 
+    if (updates.notes !== undefined) {
+      const rawNotes = updates.notes || '';
+      if (updates.status && updates.status !== 'pending_validation') {
+        const cleaned = rawNotes.replace(/\[Pendiente validación\]\s*/g, '').trim();
+        studentDb.notes = cleaned || null;
+      } else {
+        studentDb.notes = rawNotes || null;
+      }
+    } else if (
+      updates.status &&
+      updates.status !== 'pending_validation' &&
+      existingStudent?.notes?.includes('[Pendiente validación]')
+    ) {
+      const cleaned = existingStudent.notes.replace(/\[Pendiente validación\]\s*/g, '').trim();
+      studentDb.notes = cleaned || null;
+    }
+
+    let updatedRow: any = null;
     if (Object.keys(studentDb).length > 0) {
-      let { error } = await supabase.from('students').update(studentDb).eq('id', id);
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session?.user) {
+        const authErr = new Error(
+          'No hay una sesión activa en Supabase Auth (solo sesión en caché). Cierra sesión e inicia sesión de nuevo para guardar cambios en alumnos.'
+        );
+        handleSupabaseError('Actualizar alumno', authErr);
+        return { success: false, error: authErr.message };
+      }
+
+      let res = await supabase
+        .from('students')
+        .update(studentDb)
+        .eq('id', id)
+        .select('*');
+
       if (
-        error &&
+        res.error &&
         studentDb.validation_status !== undefined &&
-        (error.code === '42703' || error.message?.includes('column'))
+        (res.error.code === '42703' || res.error.message?.includes('column'))
       ) {
         const { validation_status: _ignored, ...fallbackDb } = studentDb;
-        const fallbackRes = await supabase.from('students').update(fallbackDb).eq('id', id);
-        error = fallbackRes.error;
+        res = await supabase
+          .from('students')
+          .update(fallbackDb)
+          .eq('id', id)
+          .select('*');
       }
-      if (error) {
-        handleSupabaseError('Actualizar alumno', error);
-        return;
+
+      if (
+        res.error &&
+        updates.status === 'pending_validation' &&
+        (res.error.message?.includes('students_status_check') || res.error.code === '23514')
+      ) {
+        const baseNotes = (studentDb.notes ?? existingStudent?.notes ?? '') as string;
+        const markedNotes = baseNotes.includes('[Pendiente validación]')
+          ? baseNotes
+          : `[Pendiente validación] ${baseNotes}`.trim();
+        const { validation_status: _ignored, ...rest } = studentDb;
+        res = await supabase
+          .from('students')
+          .update({ ...rest, status: 'trial', notes: markedNotes })
+          .eq('id', id)
+          .select('*');
       }
+
+      if (res.error) {
+        handleSupabaseError('Actualizar alumno', res.error);
+        return { success: false, error: res.error.message };
+      }
+
+      if (!res.data || res.data.length === 0) {
+        const { data: existingRow } = await supabase
+          .from('students')
+          .select('id')
+          .eq('id', id)
+          .maybeSingle();
+
+        const rlsErr = new Error(
+          existingRow
+            ? 'No se pudo actualizar la ficha del alumno en Supabase (0 filas modificadas por política RLS de UPDATE en students). Ejecuta el SQL de actualización de políticas RLS.'
+            : 'No se encontró la ficha del alumno en Supabase (posiblemente fue eliminada o pertenece solo a datos locales).'
+        );
+        handleSupabaseError('Actualizar alumno', rlsErr);
+        return { success: false, error: rlsErr.message };
+      }
+
+      updatedRow = res.data[0];
     }
 
     if (updates.activities) {
-      await supabase.from('student_enrollments').delete().eq('student_id', id);
-      if (updates.activities.length > 0) {
-        const enrollmentsDb = updates.activities.map(act => ({
-          student_id: id,
-          activity_id: act.activityId,
-          custom_price: act.customPrice || null,
-          billing_mode: act.billingMode,
-          enrolled_since: act.enrolledSince || new Date().toISOString().split('T')[0]
-        }));
-        await supabase.from('student_enrollments').insert(enrollmentsDb);
+      const desiredIds = new Set(updates.activities.map(a => a.activityId));
+      const previousIds = (existingStudent?.activities || []).map(a => a.activityId);
+      const removedIds = previousIds.filter(actId => !desiredIds.has(actId));
+
+      for (const act of updates.activities) {
+        const { error: upsertErr } = await upsertEnrollmentRow(
+          id,
+          act.activityId,
+          act.customPrice,
+          act.billingMode,
+          act.enrolledSince
+        );
+        if (upsertErr) {
+          handleSupabaseError('Actualizar matrícula en taller', upsertErr);
+          return { success: false, error: upsertErr.message };
+        }
+      }
+
+      for (const removedActId of removedIds) {
+        const { data: delRows, error: delErr } = await supabase
+          .from('student_enrollments')
+          .delete()
+          .eq('student_id', id)
+          .eq('activity_id', removedActId)
+          .select('id');
+
+        if (delErr || !delRows || delRows.length === 0) {
+          const { error: softErr } = await supabase
+            .from('student_enrollments')
+            .update({ active: false })
+            .eq('student_id', id)
+            .eq('activity_id', removedActId);
+          if (softErr) {
+            handleSupabaseError('Quitar matrícula de taller', delErr || softErr);
+            return { success: false, error: (delErr || softErr).message };
+          }
+        }
       }
     }
+
+    if (updatedRow) {
+      setStudents(prev =>
+        prev.map(s => {
+          if (s.id !== id) return s;
+          const mapped = mapDbStudentToStudent(updatedRow, []);
+          return {
+            ...mapped,
+            activities: updates.activities ?? s.activities
+          };
+        })
+      );
+    }
+
     await refreshFromSupabase();
+    return { success: true };
   };
 
   const deleteStudent = async (id: string) => {
@@ -1415,45 +1678,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     setStudents(prev => prev.filter(s => s.id !== id));
-  };
-
-  const upsertEnrollmentRow = async (
-    studentId: string,
-    activityId: string,
-    customPrice?: number
-  ): Promise<{ error: any }> => {
-    const act = activities.find(a => a.id === activityId);
-    const payload = {
-      student_id: studentId,
-      activity_id: activityId,
-      custom_price: customPrice !== undefined ? customPrice : null,
-      billing_mode: act?.billingMode || 'monthly',
-      enrolled_since: new Date().toISOString().split('T')[0],
-      active: true
-    };
-
-    const res = await supabase
-      .from('student_enrollments')
-      .upsert(payload, { onConflict: 'student_id,activity_id' });
-
-    if (res.error && (res.error.code === '42P10' || res.error.message?.includes('no unique or exclusion constraint'))) {
-      const { data: existing } = await supabase
-        .from('student_enrollments')
-        .select('id')
-        .eq('student_id', studentId)
-        .eq('activity_id', activityId)
-        .maybeSingle();
-
-      if (existing?.id) {
-        return await supabase
-          .from('student_enrollments')
-          .update(payload)
-          .eq('id', existing.id);
-      }
-      return await supabase.from('student_enrollments').insert([payload]);
-    }
-
-    return res;
   };
 
   const enrollStudentInActivity = async (
@@ -1478,21 +1702,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<{ success: boolean; error?: string }> => {
     clearDbError();
     try {
-      const { error } = await supabase
+      const { data: deletedRows, error: deleteErr } = await supabase
         .from('student_enrollments')
         .delete()
         .eq('student_id', studentId)
-        .eq('activity_id', activityId);
+        .eq('activity_id', activityId)
+        .select('id');
 
-      if (error) {
-        handleSupabaseError('Quitar alumno del taller', error);
-        return { success: false, error: error.message };
+      let removed = !deleteErr && Array.isArray(deletedRows) && deletedRows.length > 0;
+
+      // Fallback: si RLS bloquea DELETE pero permite UPDATE (baja lógica active = false)
+      if (!removed) {
+        const { data: updatedRows, error: updateErr } = await supabase
+          .from('student_enrollments')
+          .update({ active: false })
+          .eq('student_id', studentId)
+          .eq('activity_id', activityId)
+          .select('id');
+
+        if (!updateErr && Array.isArray(updatedRows) && updatedRows.length > 0) {
+          removed = true;
+        } else {
+          const finalErr =
+            deleteErr ||
+            updateErr ||
+            new Error(
+              'Permiso denegado o política RLS en Supabase al intentar quitar al alumno del taller (0 filas modificadas). Ejecuta el SQL de políticas RLS para student_enrollments.'
+            );
+          handleSupabaseError('Quitar alumno del taller', finalErr);
+          return { success: false, error: finalErr.message };
+        }
       }
 
       setStudents(prev =>
         prev.map(s =>
           s.id === studentId
-            ? { ...s, activities: s.activities.filter(a => a.activityId !== activityId) }
+            ? {
+                ...s,
+                activities: s.activities.filter(a => a.activityId !== activityId),
+                pendingEnrollments: (s.pendingEnrollments || []).filter(
+                  a => a.activityId !== activityId
+                )
+              }
             : s
         )
       );
@@ -1503,6 +1754,381 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       handleSupabaseError('Quitar alumno del taller', err);
       return { success: false, error: msg };
     }
+  };
+
+  const resolveStudentIdForCurrentUser = async (
+    explicitStudentId?: string
+  ): Promise<{ studentId?: string; error?: string }> => {
+    if (explicitStudentId) {
+      return { studentId: explicitStudentId };
+    }
+    if (!currentUser) {
+      return {
+        error: 'Debes iniciar sesión en Supabase para solicitar inscripción en una actividad.'
+      };
+    }
+
+    const emailNorm = (currentUser.email || '').trim().toLowerCase();
+    const matchedLocal = students.find(
+      s =>
+        (currentUser.studentId && s.id === currentUser.studentId) ||
+        s.profileId === currentUser.id ||
+        (emailNorm && s.email.trim().toLowerCase() === emailNorm)
+    );
+    if (matchedLocal) {
+      return { studentId: matchedLocal.id };
+    }
+
+    if (currentUser.studentId) {
+      return { studentId: currentUser.studentId };
+    }
+
+    const { data: existingByProfile } = await supabase
+      .from('students')
+      .select('id')
+      .eq('profile_id', currentUser.id)
+      .maybeSingle();
+    if (existingByProfile?.id) {
+      setCurrentStudentId(existingByProfile.id);
+      return { studentId: existingByProfile.id };
+    }
+
+    if (emailNorm) {
+      const { data: existingByEmail } = await supabase
+        .from('students')
+        .select('id')
+        .ilike('email', emailNorm)
+        .maybeSingle();
+      if (existingByEmail?.id) {
+        setCurrentStudentId(existingByEmail.id);
+        return { studentId: existingByEmail.id };
+      }
+    }
+
+    // Crear ficha automática de alumno vinculada al perfil si no existía
+    const baseStudent = {
+      name: currentUser.name || emailNorm.split('@')[0] || 'Alumno',
+      email: emailNorm || null,
+      phone: null,
+      status: 'active',
+      notes: 'Ficha creada automáticamente al solicitar inscripción en taller'
+    };
+    const extStudent = {
+      ...baseStudent,
+      profile_id: currentUser.id,
+      validation_status: 'validated',
+      registered_by: currentUser.id
+    };
+
+    let insertRes = await supabase.from('students').insert([extStudent]).select().single();
+    if (
+      insertRes.error &&
+      (insertRes.error.code === '42703' || insertRes.error.message?.includes('column'))
+    ) {
+      insertRes = await supabase.from('students').insert([baseStudent]).select().single();
+    }
+
+    if (insertRes.error || !insertRes.data) {
+      return {
+        error:
+          insertRes.error?.message ||
+          'No se pudo crear tu ficha de alumno en Supabase para registrar la solicitud (revisa RLS en students).'
+      };
+    }
+
+    const newStudentId = insertRes.data.id as string;
+    setCurrentStudentId(newStudentId);
+    setCurrentUser(prev => (prev ? { ...prev, studentId: newStudentId } : prev));
+    try {
+      await supabase
+        .from('profiles')
+        .update({ student_id: newStudentId })
+        .eq('id', currentUser.id);
+    } catch {
+      // Best-effort
+    }
+
+    return { studentId: newStudentId };
+  };
+
+  const requestActivityEnrollment = async (
+    activityId: string,
+    explicitStudentId?: string
+  ): Promise<{ success: boolean; error?: string; studentId?: string }> => {
+    clearDbError();
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session?.user) {
+        const msg =
+          'No hay una sesión activa de Supabase Auth. Vuelve a iniciar sesión antes de enviar la solicitud.';
+        setDbError(msg);
+        return { success: false, error: msg };
+      }
+
+      const { studentId: resolvedStudentId, error: resolveErr } =
+        await resolveStudentIdForCurrentUser(explicitStudentId);
+      if (!resolvedStudentId) {
+        const msg = resolveErr || 'No se pudo identificar tu ficha de alumno.';
+        setDbError(msg);
+        return { success: false, error: msg };
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      const act = activities.find(a => a.id === activityId);
+
+      const { data: upsertData, error } = await upsertEnrollmentRow(
+        resolvedStudentId,
+        activityId,
+        undefined,
+        act?.billingMode || 'monthly',
+        today,
+        'pending',
+        { requested_by: sessionData.session.user.id }
+      );
+
+      if (error) {
+        handleSupabaseError('Solicitar inscripción a taller', error);
+        return { success: false, error: error.message };
+      }
+
+      if (!Array.isArray(upsertData) || upsertData.length === 0) {
+        const rlsMsg =
+          'Supabase no permitió registrar la solicitud (0 filas devueltas por política RLS en student_enrollments). Ejecuta el SQL de actualización.';
+        setDbError(rlsMsg);
+        return { success: false, error: rlsMsg };
+      }
+
+      setStudents(prev =>
+        prev.map(s => {
+          if (s.id !== resolvedStudentId) return s;
+          const existingPending = s.pendingEnrollments || [];
+          if (existingPending.some(e => e.activityId === activityId)) return s;
+          return {
+            ...s,
+            pendingEnrollments: [
+              ...existingPending,
+              {
+                id: upsertData[0]?.id,
+                activityId,
+                enrolledSince: today,
+                billingMode: act?.billingMode || 'monthly',
+                status: 'pending',
+                requestedBy: sessionData.session.user.id
+              }
+            ]
+          };
+        })
+      );
+
+      await refreshFromSupabase();
+      return { success: true, studentId: resolvedStudentId };
+    } catch (err: any) {
+      const msg = err?.message || 'Error al solicitar la inscripción.';
+      handleSupabaseError('Solicitar inscripción a taller', err);
+      return { success: false, error: msg };
+    }
+  };
+
+  const cancelActivityEnrollmentRequest = async (
+    studentId: string,
+    activityId: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    clearDbError();
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session?.user) {
+        const msg =
+          'No hay una sesión activa de Supabase Auth. Inicia sesión nuevamente para cancelar la solicitud.';
+        setDbError(msg);
+        return { success: false, error: msg };
+      }
+
+      const { data: deletedPending, error: deletePendingErr } = await supabase
+        .from('student_enrollments')
+        .delete()
+        .eq('student_id', studentId)
+        .eq('activity_id', activityId)
+        .eq('status', 'pending')
+        .select('id');
+
+      let cancelled =
+        !deletePendingErr && Array.isArray(deletedPending) && deletedPending.length > 0;
+
+      if (!cancelled) {
+        const { data: deletedAny, error: deleteAnyErr } = await supabase
+          .from('student_enrollments')
+          .delete()
+          .eq('student_id', studentId)
+          .eq('activity_id', activityId)
+          .select('id');
+
+        if (!deleteAnyErr && Array.isArray(deletedAny) && deletedAny.length > 0) {
+          cancelled = true;
+        } else {
+          // Fallback: baja lógica si RLS bloquea DELETE pero permite UPDATE
+          const { data: updatedRows, error: updateErr } = await supabase
+            .from('student_enrollments')
+            .update({ status: 'rejected', active: false })
+            .eq('student_id', studentId)
+            .eq('activity_id', activityId)
+            .select('id');
+
+          if (!updateErr && Array.isArray(updatedRows) && updatedRows.length > 0) {
+            cancelled = true;
+          } else {
+            const finalErr =
+              deletePendingErr ||
+              deleteAnyErr ||
+              updateErr ||
+              new Error(
+                'Permiso denegado o política RLS en Supabase al cancelar la solicitud (0 filas eliminadas). Ejecuta el SQL de actualización.'
+              );
+            handleSupabaseError('Cancelar solicitud de inscripción', finalErr);
+            return { success: false, error: finalErr.message };
+          }
+        }
+      }
+
+      setStudents(prev =>
+        prev.map(s =>
+          s.id === studentId
+            ? {
+                ...s,
+                pendingEnrollments: (s.pendingEnrollments || []).filter(
+                  e => e.activityId !== activityId
+                )
+              }
+            : s
+        )
+      );
+      await refreshFromSupabase();
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || 'Error al cancelar la solicitud.';
+      handleSupabaseError('Cancelar solicitud de inscripción', err);
+      return { success: false, error: msg };
+    }
+  };
+
+  const confirmActivityEnrollment = async (
+    studentId: string,
+    activityId: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    clearDbError();
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session?.user) {
+        const msg =
+          'No hay una sesión activa de Supabase Auth. Vuelve a iniciar sesión para confirmar la inscripción.';
+        setDbError(msg);
+        return { success: false, error: msg };
+      }
+
+      const nowIso = new Date().toISOString();
+      let updateRes = await supabase
+        .from('student_enrollments')
+        .update({
+          status: 'active',
+          active: true,
+          confirmed_by: sessionData.session.user.id,
+          confirmed_at: nowIso
+        })
+        .eq('student_id', studentId)
+        .eq('activity_id', activityId)
+        .select('*');
+
+      if (
+        updateRes.error &&
+        (updateRes.error.code === '42703' || updateRes.error.message?.includes('column'))
+      ) {
+        updateRes = await supabase
+          .from('student_enrollments')
+          .update({ status: 'active', active: true })
+          .eq('student_id', studentId)
+          .eq('activity_id', activityId)
+          .select('*');
+
+        if (
+          updateRes.error &&
+          (updateRes.error.code === '42703' || updateRes.error.message?.includes('column'))
+        ) {
+          updateRes = await supabase
+            .from('student_enrollments')
+            .update({ active: true })
+            .eq('student_id', studentId)
+            .eq('activity_id', activityId)
+            .select('*');
+        }
+      }
+
+      if (updateRes.error) {
+        handleSupabaseError('Confirmar inscripción', updateRes.error);
+        return { success: false, error: updateRes.error.message };
+      }
+
+      let confirmedRow = Array.isArray(updateRes.data) ? updateRes.data[0] : null;
+      if (!confirmedRow) {
+        const upsertRes = await upsertEnrollmentRow(studentId, activityId);
+        if (upsertRes.error) {
+          handleSupabaseError('Confirmar inscripción', upsertRes.error);
+          return { success: false, error: upsertRes.error.message };
+        }
+        confirmedRow = Array.isArray(upsertRes.data) ? upsertRes.data[0] : null;
+      }
+
+      if (!confirmedRow) {
+        const rlsMsg =
+          'Supabase devolvió 0 filas actualizadas al confirmar la inscripción. Revisa las políticas RLS UPDATE en student_enrollments ejecutando el script SQL proporcionado.';
+        setDbError(rlsMsg);
+        return { success: false, error: rlsMsg };
+      }
+
+      const act = activities.find(a => a.id === activityId);
+      setStudents(prev =>
+        prev.map(s => {
+          if (s.id !== studentId) return s;
+          const pendingItem = (s.pendingEnrollments || []).find(e => e.activityId === activityId);
+          const alreadyActive = s.activities.some(e => e.activityId === activityId);
+          const newEntry = {
+            id: confirmedRow.id || pendingItem?.id,
+            activityId,
+            customPrice: pendingItem?.customPrice,
+            enrolledSince:
+              confirmedRow.enrolled_since ||
+              pendingItem?.enrolledSince ||
+              new Date().toISOString().split('T')[0],
+            billingMode: (confirmedRow.billing_mode ||
+              pendingItem?.billingMode ||
+              act?.billingMode ||
+              'monthly') as 'monthly' | 'per_class',
+            status: 'active' as const
+          };
+          return {
+            ...s,
+            activities: alreadyActive
+              ? s.activities.map(e => (e.activityId === activityId ? newEntry : e))
+              : [...s.activities, newEntry],
+            pendingEnrollments: (s.pendingEnrollments || []).filter(
+              e => e.activityId !== activityId
+            )
+          };
+        })
+      );
+
+      await refreshFromSupabase();
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || 'Error al confirmar la inscripción.';
+      handleSupabaseError('Confirmar inscripción', err);
+      return { success: false, error: msg };
+    }
+  };
+
+  const rejectActivityEnrollment = async (
+    studentId: string,
+    activityId: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    return await cancelActivityEnrollmentRequest(studentId, activityId);
   };
 
   const enrollUserFromProfile: AppContextType['enrollUserFromProfile'] = async ({
@@ -1650,13 +2276,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (
         createRes.error &&
-        (createRes.error.code === '42703' || createRes.error.message?.includes('column'))
+        (createRes.error.code === '42703' ||
+          createRes.error.code === '23503' ||
+          createRes.error.code === '22P02' ||
+          createRes.error.message?.includes('column'))
       ) {
         createRes = await supabase
           .from('students')
           .insert([basePendingPayload])
           .select()
           .single();
+      }
+
+      // Fallback si students_status_check aún no permite 'pending_validation': usar 'trial' + marcador pendiente
+      if (
+        createRes.error &&
+        (createRes.error.message?.includes('students_status_check') || createRes.error.code === '23514')
+      ) {
+        const markedNotes = cleanNotes.includes('[Pendiente validación]')
+          ? cleanNotes
+          : `[Pendiente validación] ${cleanNotes}`;
+        const fallbackTrialExtended = {
+          ...extendedPendingPayload,
+          status: 'trial',
+          notes: markedNotes
+        };
+        createRes = await supabase
+          .from('students')
+          .insert([fallbackTrialExtended])
+          .select()
+          .single();
+
+        if (
+          createRes.error &&
+          (createRes.error.code === '42703' ||
+            createRes.error.code === '23503' ||
+            createRes.error.code === '22P02' ||
+            createRes.error.message?.includes('column'))
+        ) {
+          createRes = await supabase
+            .from('students')
+            .insert([{ ...basePendingPayload, status: 'trial', notes: markedNotes }])
+            .select()
+            .single();
+        }
       }
 
       if (createRes.error || !createRes.data) {
@@ -1691,33 +2354,105 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ) => {
     clearDbError();
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const authUserId = sessionData?.session?.user?.id;
+      if (!authUserId) {
+        const authErr = new Error(
+          'Tu sesión en Supabase Auth ha expirado o está en caché local. Cierra sesión y vuelve a entrar con tu cuenta de administrador para validar altas.'
+        );
+        handleSupabaseError('Validar alta definitiva de socio', authErr);
+        return { success: false, error: authErr.message };
+      }
+
+      const targetStudent = students.find(s => s.id === studentId);
+      const hadPendingMarker = Boolean(targetStudent?.notes?.includes('[Pendiente validación]'));
+      const cleanedNotes = hadPendingMarker
+        ? targetStudent!.notes!.replace(/\[Pendiente validación\]\s*/g, '').trim()
+        : undefined;
       const targetStatus = approve ? 'active' : 'inactive';
-      const extendedUpdate = {
-        status: targetStatus,
-        validation_status: approve ? 'validated' : 'rejected',
+      const targetValidationStatus = approve ? 'validated' : 'rejected';
+
+      const baseUpdate: Record<string, any> = { status: targetStatus };
+      if (hadPendingMarker) {
+        baseUpdate.notes = cleanedNotes || null;
+      }
+
+      const validationUpdate: Record<string, any> = {
+        ...baseUpdate,
+        validation_status: targetValidationStatus
+      };
+
+      const fullUpdate: Record<string, any> = {
+        ...validationUpdate,
         validated_at: new Date().toISOString(),
-        validated_by: currentUser?.id || null
+        validated_by: authUserId
       };
 
       let updateRes = await supabase
         .from('students')
-        .update(extendedUpdate)
-        .eq('id', studentId);
+        .update(fullUpdate)
+        .eq('id', studentId)
+        .select('*');
 
+      // Fallback 1: si faltan validated_at / validated_by o hay error FK/UUID en validated_by, conservar validation_status
+      if (
+        updateRes.error &&
+        (updateRes.error.code === '42703' ||
+          updateRes.error.code === '23503' ||
+          updateRes.error.code === '22P02' ||
+          updateRes.error.message?.includes('column'))
+      ) {
+        updateRes = await supabase
+          .from('students')
+          .update(validationUpdate)
+          .eq('id', studentId)
+          .select('*');
+      }
+
+      // Fallback 2: si tampoco existe la columna validation_status aún, actualizar al menos status y notes
       if (
         updateRes.error &&
         (updateRes.error.code === '42703' || updateRes.error.message?.includes('column'))
       ) {
         updateRes = await supabase
           .from('students')
-          .update({ status: targetStatus })
-          .eq('id', studentId);
+          .update(baseUpdate)
+          .eq('id', studentId)
+          .select('*');
       }
 
       if (updateRes.error) {
         handleSupabaseError('Validar alta definitiva de socio', updateRes.error);
         return { success: false, error: updateRes.error.message };
       }
+
+      if (!updateRes.data || updateRes.data.length === 0) {
+        const { data: existingRow } = await supabase
+          .from('students')
+          .select('id')
+          .eq('id', studentId)
+          .maybeSingle();
+
+        const rlsErr = new Error(
+          existingRow
+            ? 'Supabase no actualizó el registro (0 filas modificadas por política RLS de UPDATE en students). Ejecuta el script SQL de políticas RLS para admins/monitores.'
+            : 'No se encontró el alumno en Supabase para validar.'
+        );
+        handleSupabaseError('Validar alta definitiva de socio', rlsErr);
+        return { success: false, error: rlsErr.message };
+      }
+
+      const updatedRow = updateRes.data[0];
+      setStudents(prev =>
+        prev.map(s => {
+          if (s.id !== studentId) return s;
+          const mapped = mapDbStudentToStudent(updatedRow, []);
+          return {
+            ...mapped,
+            activities: s.activities
+          };
+        })
+      );
 
       await refreshFromSupabase();
       return { success: true };
@@ -1745,7 +2480,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       activityName: activity?.name || '',
       periodMonth: payment.periodMonth || selectedPeriod,
       amount: payment.amount,
-      paymentDate: payment.paymentDate || (payment.status === 'paid' ? new Date().toISOString().split('T')[0] : undefined),
+      paymentDate:
+        payment.paymentDate ||
+        (payment.status === 'paid' || payment.status === 'partial'
+          ? new Date().toISOString().split('T')[0]
+          : undefined),
       paymentMethod: payment.paymentMethod || 'cash',
       status: payment.status || 'paid',
       collectedByTeacher: payment.collectedByTeacher ?? true,
@@ -1755,7 +2494,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const { data, error } = await supabase.from('payments').insert([dbPayload]).select().single();
     if (error) {
-      handleSupabaseError('Registrar pago en Supabase', error);
+      const enhancedError = error.message?.includes('payments_status_check')
+        ? new Error('La restricción payments_status_check en Supabase aún no permite "partial". Ejecuta el SQL de actualización en Supabase.')
+        : error;
+      handleSupabaseError('Registrar pago en Supabase', enhancedError);
       return null;
     }
 
@@ -1775,7 +2517,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const dbPayload = mapPaymentToDb(merged);
     const { error } = await supabase.from('payments').update(dbPayload).eq('id', id);
     if (error) {
-      handleSupabaseError('Actualizar pago', error);
+      const enhancedError = error.message?.includes('payments_status_check')
+        ? new Error('La restricción payments_status_check en Supabase aún no permite "partial". Ejecuta el SQL de actualización en Supabase.')
+        : error;
+      handleSupabaseError('Actualizar pago', enhancedError);
       return;
     }
     setPayments(prev => prev.map(p => (p.id === id ? merged : p)));
@@ -1830,7 +2575,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       amount: params.amount,
       paymentDate: paymentDate,
       paymentMethod: params.paymentMethod || 'cash',
-      status: 'paid',
+      status: params.isPartial ? 'partial' : 'paid',
       collectedByTeacher: true,
       collectedByTeacherId: activity?.teacherId || currentTeacherId,
       notes: params.notes || (params.isPartial ? 'Pago parcial en clase' : 'Pago de clase impartida')
@@ -2102,7 +2847,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const totalIncomeCollected = useMemo(() => {
     return periodPayments
-      .filter(p => p.status === 'paid')
+      .filter(p => p.status === 'paid' || p.status === 'partial')
       .reduce((sum, p) => sum + p.amount, 0);
   }, [periodPayments]);
 
@@ -2138,7 +2883,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const teacherPeriodPayments = periodPayments.filter(p => activityIds.includes(p.activityId));
       const grossActivityRevenue = teacherPeriodPayments
-        .filter(p => p.status === 'paid')
+        .filter(p => p.status === 'paid' || p.status === 'partial')
         .reduce((sum, p) => sum + p.amount, 0);
 
       let calculatedDue = 0;
@@ -2155,7 +2900,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const collectedInHand = teacherPeriodPayments
-        .filter(p => p.status === 'paid' && p.collectedByTeacher)
+        .filter(p => (p.status === 'paid' || p.status === 'partial') && p.collectedByTeacher)
         .reduce((sum, p) => sum + p.amount, 0);
 
       const teacherPeriodPayouts = payouts.filter(
@@ -2247,6 +2992,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteStudent,
         enrollStudentInActivity,
         unenrollStudentFromActivity,
+        requestActivityEnrollment,
+        cancelActivityEnrollmentRequest,
+        confirmActivityEnrollment,
+        rejectActivityEnrollment,
         enrollUserFromProfile,
         quickCreateAndEnrollStudent,
         validatePendingStudent,

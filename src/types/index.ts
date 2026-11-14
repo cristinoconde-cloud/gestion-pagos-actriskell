@@ -1,5 +1,5 @@
 export type PaymentMethod = 'cash' | 'transfer' | 'bizum' | 'card';
-export type PaymentStatus = 'paid' | 'pending' | 'overdue' | 'cancelled';
+export type PaymentStatus = 'paid' | 'partial' | 'pending' | 'overdue' | 'cancelled';
 export type TeacherPaymentScheme = 'per_class' | 'monthly_fixed' | 'revenue_share';
 export type StudentStatus = 'active' | 'inactive' | 'trial' | 'pending_validation';
 export type StudentValidationStatus = 'pending' | 'validated' | 'rejected';
@@ -55,11 +55,16 @@ export interface Activity {
   active: boolean;
 }
 
+export type EnrollmentStatus = 'pending' | 'active' | 'rejected';
+
 export interface StudentActivityEnrollment {
+  id?: string;
   activityId: string;
   customPrice?: number;
   enrolledSince: string;
   billingMode: 'monthly' | 'per_class';
+  status?: EnrollmentStatus;
+  requestedBy?: string;
 }
 
 export interface Student {
@@ -74,6 +79,7 @@ export interface Student {
   validatedAt?: string;
   registeredAt: string;
   activities: StudentActivityEnrollment[];
+  pendingEnrollments?: StudentActivityEnrollment[];
   notes?: string;
 }
 

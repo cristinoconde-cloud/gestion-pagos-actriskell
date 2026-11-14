@@ -133,10 +133,17 @@ interface TeacherWorkshopsSectionProps {
 
 export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = ({
   onOpenAddActivity,
-  onOpenAddStudent,
   onOpenEnrollStudent
 }) => {
-  const { currentTeacherId, teachers, activities, students, unenrollStudentFromActivity } = useApp();
+  const {
+    currentTeacherId,
+    teachers,
+    activities,
+    students,
+    unenrollStudentFromActivity,
+    confirmActivityEnrollment,
+    rejectActivityEnrollment
+  } = useApp();
   const currentTeacher = teachers.find(t => t.id === currentTeacherId) || teachers[0];
   const myActivities = useMemo(() => {
     return activities.filter(a => a.teacherId === currentTeacher?.id);
@@ -149,11 +156,58 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
     activityName: string;
   } | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
+  const [busyRequestKey, setBusyRequestKey] = useState<string | null>(null);
   const [workshopFeedback, setWorkshopFeedback] = useState<string | null>(null);
+  const [workshopError, setWorkshopError] = useState<string | null>(null);
+
+  const handleConfirmPendingRequest = async (
+    studentId: string,
+    studentName: string,
+    activityId: string,
+    activityName: string
+  ) => {
+    setBusyRequestKey(`confirm:${studentId}:${activityId}`);
+    setWorkshopError(null);
+    setWorkshopFeedback(null);
+    try {
+      const res = await confirmActivityEnrollment(studentId, activityId);
+      if (res.success) {
+        setWorkshopFeedback(`Inscripción confirmada para ${studentName} en "${activityName}".`);
+        setTimeout(() => setWorkshopFeedback(null), 4000);
+      } else {
+        setWorkshopError(res.error || 'No se pudo confirmar la solicitud de inscripción.');
+      }
+    } finally {
+      setBusyRequestKey(null);
+    }
+  };
+
+  const handleRejectPendingRequest = async (
+    studentId: string,
+    studentName: string,
+    activityId: string,
+    activityName: string
+  ) => {
+    setBusyRequestKey(`reject:${studentId}:${activityId}`);
+    setWorkshopError(null);
+    setWorkshopFeedback(null);
+    try {
+      const res = await rejectActivityEnrollment(studentId, activityId);
+      if (res.success) {
+        setWorkshopFeedback(`Solicitud de ${studentName} en "${activityName}" rechazada.`);
+        setTimeout(() => setWorkshopFeedback(null), 4000);
+      } else {
+        setWorkshopError(res.error || 'No se pudo rechazar la solicitud.');
+      }
+    } finally {
+      setBusyRequestKey(null);
+    }
+  };
 
   const handleConfirmRemove = async () => {
     if (!pendingRemoval) return;
     setIsRemoving(true);
+    setWorkshopError(null);
     try {
       const res = await unenrollStudentFromActivity(
         pendingRemoval.studentId,
@@ -164,6 +218,8 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
           `Se quitó a ${pendingRemoval.studentName} de "${pendingRemoval.activityName}".`
         );
         setTimeout(() => setWorkshopFeedback(null), 3500);
+      } else {
+        setWorkshopError(res.error || 'No se pudo quitar al alumno del taller.');
       }
       setPendingRemoval(null);
     } finally {
@@ -217,6 +273,13 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
         </div>
       )}
 
+      {workshopError && (
+        <div className="rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-500/30 p-3 text-xs font-bold text-rose-800 dark:text-rose-300 flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+          <span>{workshopError}</span>
+        </div>
+      )}
+
       {/* Listado de Talleres */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {myActivities.length === 0 ? (
@@ -227,6 +290,9 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
           myActivities.map(act => {
             const actStudents = students.filter(s =>
               s.activities.some(enroll => enroll.activityId === act.id)
+            );
+            const actPendingRequests = students.filter(s =>
+              (s.pendingEnrollments || []).some(enroll => enroll.activityId === act.id)
             );
             return (
               <div
@@ -283,6 +349,61 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                   <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 p-2 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5 border border-emerald-500/20">
                     <Smartphone className="h-3.5 w-3.5 text-emerald-600" />
                     <span>Bizum: <strong>{act.bizum_phone}</strong> (Concepto: {act.bizum_concept})</span>
+                  </div>
+                )}
+
+                {/* Solicitudes de inscripción pendientes */}
+                {actPendingRequests.length > 0 && (
+                  <div className="rounded-xl border border-amber-500/35 bg-amber-50/70 dark:bg-amber-950/25 p-3 space-y-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5" />
+                      Solicitudes de plaza pendientes ({actPendingRequests.length})
+                    </span>
+                    <div className="space-y-1.5">
+                      {actPendingRequests.map(st => {
+                        const cKey = `confirm:${st.id}:${act.id}`;
+                        const rKey = `reject:${st.id}:${act.id}`;
+                        const isBusy = busyRequestKey === cKey || busyRequestKey === rKey;
+                        return (
+                          <div
+                            key={st.id}
+                            className="flex items-center justify-between gap-2 rounded-lg bg-white/95 dark:bg-slate-900/95 px-2.5 py-2 text-xs border border-amber-500/20"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <span className="font-bold text-slate-900 dark:text-white truncate block">
+                                {st.name}
+                              </span>
+                              {(st.phone || st.email) && (
+                                <span className="text-[10px] text-slate-500 truncate block">
+                                  {st.phone || st.email}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => handleConfirmPendingRequest(st.id, st.name, act.id, act.name)}
+                                className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                              >
+                                <Check className="h-3 w-3" />
+                                <span>{busyRequestKey === cKey ? '...' : 'Confirmar'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => handleRejectPendingRequest(st.id, st.name, act.id, act.name)}
+                                title="Rechazar solicitud"
+                                aria-label={`Rechazar solicitud de ${st.name}`}
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
@@ -418,8 +539,11 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     sessions,
     periodPayments,
     recordClassPayment,
+    updatePayment,
     deletePayment,
     unenrollStudentFromActivity,
+    confirmActivityEnrollment,
+    rejectActivityEnrollment,
     addClassSession,
     currentRole
   } = useApp();
@@ -439,6 +563,28 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       st.activities.some(a => myActivityIds.includes(a.activityId))
     );
   }, [students, myActivityIds]);
+
+  const myPendingRequests = useMemo(() => {
+    const items: Array<{ studentId: string; studentName: string; contact: string; activityId: string; activityName: string }> = [];
+    for (const st of students) {
+      for (const req of st.pendingEnrollments || []) {
+        if (!myActivityIds.includes(req.activityId)) continue;
+        const act = myActivities.find(a => a.id === req.activityId);
+        if (!act) continue;
+        items.push({
+          studentId: st.id,
+          studentName: st.name,
+          contact: st.phone || st.email || '',
+          activityId: act.id,
+          activityName: act.name
+        });
+      }
+    }
+    return items;
+  }, [students, myActivityIds, myActivities]);
+
+  const [portalRequestBusyKey, setPortalRequestBusyKey] = useState<string | null>(null);
+  const [portalRequestError, setPortalRequestError] = useState<string | null>(null);
 
   // Pestañas internas del Portal del Monitor
   const [activeTab, setActiveTab] = useState<'class_control' | 'workshops' | 'payout' | 'profile'>('class_control');
@@ -509,6 +655,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
   // Feedback de guardado / acciones
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+  const [classActionError, setClassActionError] = useState<string | null>(null);
 
   // Actividad seleccionada en la sesión activa
   const activeClassActivity = myActivities.find(a => a.id === selectedClassActivityId) || myActivities[0];
@@ -552,6 +699,13 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           p =>
             p.studentId === studentId &&
             p.activityId === activeClassActivity.id &&
+            p.periodMonth === selectedPeriod &&
+            p.status === 'partial'
+        ) ||
+        periodPayments.find(
+          p =>
+            p.studentId === studentId &&
+            p.activityId === activeClassActivity.id &&
             p.periodMonth === selectedPeriod
         )
       );
@@ -562,14 +716,21 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           p =>
             p.studentId === studentId &&
             p.activityId === activeClassActivity.id &&
-            p.paymentDate === sessionDate &&
+            p.paymentDate?.slice(0, 10) === sessionDate &&
             p.status === 'paid'
         ) ||
         periodPayments.find(
           p =>
             p.studentId === studentId &&
             p.activityId === activeClassActivity.id &&
-            p.paymentDate === sessionDate
+            p.paymentDate?.slice(0, 10) === sessionDate &&
+            p.status === 'partial'
+        ) ||
+        periodPayments.find(
+          p =>
+            p.studentId === studentId &&
+            p.activityId === activeClassActivity.id &&
+            p.paymentDate?.slice(0, 10) === sessionDate
         )
       );
     }
@@ -578,6 +739,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const handleConfirmDialogAction = async () => {
     if (!confirmDialog) return;
     setIsConfirmBusy(true);
+    setClassActionError(null);
     try {
       if (confirmDialog.type === 'delete_payment') {
         await deletePayment(confirmDialog.paymentId);
@@ -595,6 +757,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
             `${confirmDialog.studentName} ha sido dado de baja del taller "${confirmDialog.activityName}".`
           );
           setTimeout(() => setSaveSuccessMsg(null), 4000);
+        } else {
+          setClassActionError(res.error || 'No se pudo quitar al alumno del taller.');
         }
       }
       setConfirmDialog(null);
@@ -604,22 +768,48 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   };
 
   // Handler de Cobro Rápido (completo o parcial)
-  const handleCollectPayment = (studentId: string, fullAmount: number, isPartial: boolean = false) => {
+  const handleCollectPayment = async (
+    studentId: string,
+    fullAmount: number,
+    isPartial: boolean = false
+  ) => {
     if (!activeClassActivity) return;
-    const chosenAmount = isPartial ? (partialAmountMap[studentId] || fullAmount) : fullAmount;
-    const chosenMethod = paymentMethodMap[studentId] || (activeClassActivity.bizum_enabled ? 'bizum' : 'cash');
+    setClassActionError(null);
 
-    recordClassPayment({
+    const defaultPartialAmount =
+      fullAmount > 1 ? Math.round((fullAmount / 2) * 100) / 100 : fullAmount;
+    const chosenAmount = isPartial
+      ? partialAmountMap[studentId] ?? defaultPartialAmount
+      : fullAmount;
+
+    if (!Number.isFinite(chosenAmount) || chosenAmount <= 0) {
+      setClassActionError('Introduce un importe válido mayor que 0 €.');
+      return;
+    }
+
+    const effectiveIsPartial = isPartial && (fullAmount <= 0 || chosenAmount < fullAmount);
+    const chosenMethod = paymentMethodMap[studentId] || 'cash';
+
+    const receipt = await recordClassPayment({
       studentId,
       activityId: activeClassActivity.id,
       amount: chosenAmount,
-      isPartial,
+      isPartial: effectiveIsPartial,
       paymentMethod: chosenMethod,
       date: sessionDate,
-      notes: isPartial
-        ? `Cobro parcial (${chosenAmount}€ de ${fullAmount}€) en clase de ${activeClassActivity.name}`
+      notes: effectiveIsPartial
+        ? `Pago parcial (${chosenAmount}€ de ${fullAmount}€) en clase de ${activeClassActivity.name}`
         : `Cobro en clase de ${activeClassActivity.name}`
     });
+
+    if (!receipt) {
+      setClassActionError(
+        effectiveIsPartial
+          ? 'No se pudo guardar el pago parcial en Supabase. Verifica que la restricción payments_status_check permita el estado "partial".'
+          : 'No se pudo registrar el cobro en Supabase.'
+      );
+      return;
+    }
 
     // Cerrar input parcial si estaba abierto
     setPartialInputOpen(prev => ({ ...prev, [studentId]: false }));
@@ -630,6 +820,16 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     }
   };
 
+  const handleCompletePartialPayment = async (paymentId: string, fullAmount: number) => {
+    if (!activeClassActivity) return;
+    await updatePayment(paymentId, {
+      amount: fullAmount,
+      status: 'paid',
+      paymentDate: sessionDate,
+      notes: `Cuota completada (${fullAmount}€) en clase de ${activeClassActivity.name}`
+    });
+  };
+
   // Cobro a todos los presentes que tengan pago pendiente
   const handleCollectAllPresent = () => {
     if (!activeClassActivity) return;
@@ -637,14 +837,22 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       const isPresent = attendanceMap[student.id] === 'present' || attendanceMap[student.id] === 'partial';
       if (isPresent) {
         const payment = getStudentPaymentStatus(student.id);
-        if (!payment || payment.status !== 'paid') {
-          const enroll = student.activities.find(a => a.activityId === activeClassActivity.id);
-          const fee = enroll?.customPrice ?? (
-            activeClassActivity.billingMode === 'per_class'
-              ? activeClassActivity.defaultPricePerClass
-              : activeClassActivity.defaultPriceMonthly
-          );
+        const enroll = student.activities.find(a => a.activityId === activeClassActivity.id);
+        const fee = enroll?.customPrice ?? (
+          activeClassActivity.billingMode === 'per_class'
+            ? activeClassActivity.defaultPricePerClass
+            : activeClassActivity.defaultPriceMonthly
+        );
+        if (!payment) {
           handleCollectPayment(student.id, fee, false);
+        } else if (payment.status === 'partial') {
+          handleCompletePartialPayment(payment.id, fee);
+        } else if (payment.status !== 'paid') {
+          updatePayment(payment.id, {
+            amount: fee,
+            status: 'paid',
+            paymentDate: sessionDate
+          });
         }
       }
     });
@@ -665,7 +873,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         studentId: s.id,
         studentName: s.name,
         attendance: attendanceMap[s.id] || 'present',
-        paid: pay?.status === 'paid',
+        paid: pay?.status === 'paid' || pay?.status === 'partial',
         paidAmount: pay?.amount,
         paymentMethod: pay?.paymentMethod,
         paymentId: pay?.id
@@ -754,7 +962,84 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         </div>
       </div>
 
-      {/* Pestañas de Navegación Interna del Portal (ocultas en rol Monitor puro porque usa barra principal de 5 pestañas) */}
+      {/* Banner de solicitudes de inscripción pendientes en los talleres del monitor */}
+      {myPendingRequests.length > 0 && (
+        <div className="rounded-2xl border border-amber-500/35 bg-amber-50/80 dark:bg-amber-950/25 p-4 shadow-xs space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+              <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <span>Solicitudes de inscripción pendientes en tus clases ({myPendingRequests.length})</span>
+            </span>
+          </div>
+          {portalRequestError && (
+            <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">{portalRequestError}</p>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {myPendingRequests.map(req => {
+              const cKey = `c:${req.studentId}:${req.activityId}`;
+              const rKey = `r:${req.studentId}:${req.activityId}`;
+              const isBusy = portalRequestBusyKey === cKey || portalRequestBusyKey === rKey;
+              return (
+                <div
+                  key={`${req.studentId}-${req.activityId}`}
+                  className="flex items-center justify-between gap-2 rounded-xl bg-white dark:bg-slate-900 px-3 py-2 border border-amber-500/20 text-xs"
+                >
+                  <div className="min-w-0 flex-1">
+                    <span className="font-bold text-slate-900 dark:text-white truncate block">
+                      {req.studentName}
+                    </span>
+                    <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold truncate block">
+                      {req.activityName}
+                      {req.contact ? ` · ${req.contact}` : ''}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={async () => {
+                        setPortalRequestBusyKey(cKey);
+                        setPortalRequestError(null);
+                        try {
+                          const res = await confirmActivityEnrollment(req.studentId, req.activityId);
+                          if (!res.success && res.error) setPortalRequestError(res.error);
+                        } finally {
+                          setPortalRequestBusyKey(null);
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                    >
+                      <Check className="h-3 w-3" />
+                      <span>{portalRequestBusyKey === cKey ? '...' : 'Confirmar'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={async () => {
+                        setPortalRequestBusyKey(rKey);
+                        setPortalRequestError(null);
+                        try {
+                          const res = await rejectActivityEnrollment(req.studentId, req.activityId);
+                          if (!res.success && res.error) setPortalRequestError(res.error);
+                        } finally {
+                          setPortalRequestBusyKey(null);
+                        }
+                      }}
+                      title="Rechazar solicitud"
+                      aria-label={`Rechazar solicitud de ${req.studentName}`}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Pestañas de Navegación Interna del Portal (ocultas en rol Monitor puro porque usa barra principal) */}
       {currentRole !== 'teacher' && (
         <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto no-scrollbar">
           <button
@@ -941,11 +1226,18 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
             </div>
           </div>
 
-          {/* Mensaje de Confirmación tras Guardar */}
+          {/* Mensaje de Confirmación o Error tras Guardar */}
           {saveSuccessMsg && (
             <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/30 p-3 text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
               <span>{saveSuccessMsg}</span>
+            </div>
+          )}
+
+          {classActionError && (
+            <div className="rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-500/30 p-3 text-xs font-bold text-rose-800 dark:text-rose-300 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+              <span>{classActionError}</span>
             </div>
           )}
 
@@ -967,11 +1259,13 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
                 const payment = getStudentPaymentStatus(student.id);
                 const isPaid = payment?.status === 'paid';
+                const isPartialPaid = payment?.status === 'partial';
+                const remainingFee = isPartialPaid && payment ? Math.max(0, studentFee - payment.amount) : studentFee;
                 const currentAttendance = attendanceMap[student.id] || 'present';
 
                 const isPartialOpen = partialInputOpen[student.id] || false;
                 const partialAmt = partialAmountMap[student.id] ?? Math.round(studentFee / 2);
-                const selectedMethod = paymentMethodMap[student.id] || (activeClassActivity.bizum_enabled ? 'bizum' : 'cash');
+                const selectedMethod = paymentMethodMap[student.id] || 'cash';
 
                 return (
                   <div
@@ -981,6 +1275,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         ? 'border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 opacity-75'
                         : isPaid
                         ? 'border-emerald-500/30 bg-emerald-50/20 dark:bg-emerald-950/10'
+                        : isPartialPaid
+                        ? 'border-amber-500/40 bg-amber-50/20 dark:bg-amber-950/10'
                         : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
                     }`}
                   >
@@ -1033,7 +1329,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                 <div className="text-left">
                                   <span>Pagado: {payment.amount.toFixed(2)} €</span>
                                   <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-normal">
-                                    {payment.paymentMethod === 'cash' ? 'En mano' : payment.paymentMethod} · {payment.paymentDate}
+                                    {payment.paymentMethod === 'cash' ? 'En Mano' : payment.paymentMethod} · {payment.paymentDate}
                                   </span>
                                 </div>
                               </div>
@@ -1048,6 +1344,47 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                   })
                                 }
                                 title="Desmarcar / eliminar pago registrado"
+                                className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/20 px-2.5 py-2 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5 shrink-0" />
+                                <span>Desmarcar</span>
+                              </button>
+                            </div>
+                          ) : isPartialPaid && payment ? (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <div className="flex items-center gap-2 rounded-xl bg-amber-500/15 px-3 py-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 border border-amber-500/30 min-h-[38px]">
+                                <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                                <div className="text-left">
+                                  <span>
+                                    Pago parcial: {payment.amount.toFixed(2)} €
+                                    {remainingFee > 0 ? ` (faltan ${remainingFee.toFixed(2)} €)` : ''}
+                                  </span>
+                                  <span className="block text-[10px] text-amber-700/80 dark:text-amber-300/80 font-normal">
+                                    {payment.paymentMethod === 'cash' ? 'En Mano' : payment.paymentMethod} · {payment.paymentDate}
+                                  </span>
+                                </div>
+                              </div>
+                              {remainingFee > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleCompletePartialPayment(payment.id, studentFee)}
+                                  className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-2.5 py-2 text-[11px] font-bold text-white hover:bg-emerald-700 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap"
+                                >
+                                  <Banknote className="h-3.5 w-3.5 shrink-0" />
+                                  <span>Completar ({remainingFee.toFixed(2)} €)</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setConfirmDialog({
+                                    type: 'delete_payment',
+                                    paymentId: payment.id,
+                                    studentName: student.name,
+                                    amount: payment.amount
+                                  })
+                                }
+                                title="Desmarcar / eliminar pago parcial"
                                 className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/20 px-2.5 py-2 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap"
                               >
                                 <RotateCcw className="h-3.5 w-3.5 shrink-0" />
@@ -1141,7 +1478,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                     </div>
 
                     {/* Desplegable para Cobro Parcial / Método */}
-                    {!isPaid && isPartialOpen && (
+                    {!isPaid && !isPartialPaid && isPartialOpen && (
                       <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl flex flex-wrap items-center gap-3">
                         <div className="flex items-center gap-2">
                           <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
@@ -1151,8 +1488,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                             <input
                               type="number"
                               step="0.5"
-                              min="1"
-                              max={studentFee}
+                              min="0.5"
+                              max={studentFee > 0 ? studentFee : undefined}
                               value={partialAmt}
                               onChange={e =>
                                 setPartialAmountMap(prev => ({
@@ -1180,7 +1517,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                             }
                             className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-semibold min-h-[36px]"
                           >
-                            <option value="cash">Efectivo en mano</option>
+                            <option value="cash">En Mano</option>
                             <option value="bizum">Bizum</option>
                             <option value="transfer">Transferencia</option>
                           </select>

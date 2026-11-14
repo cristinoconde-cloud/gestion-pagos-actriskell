@@ -1,19 +1,17 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { Activity, NewsNote, CalendarEventItem } from '../types';
+import { CalendarEventItem } from '../types';
 import {
   Calendar as CalendarIcon,
   Clock,
   MapPin,
   User,
   Plus,
-  Sparkles,
+  ChevronLeft,
   ChevronRight,
   Pin,
   Trash2,
   Newspaper,
-  CheckCircle2,
-  AlertTriangle,
   Info
 } from 'lucide-react';
 
@@ -22,12 +20,22 @@ interface CalendarViewProps {
   onNavigateToActivities?: () => void;
 }
 
+const MADRID_TIMEZONE = 'Europe/Madrid';
+
+function toMadridIsoDate(dateObj: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: MADRID_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(dateObj);
+}
+
 export const CalendarView: React.FC<CalendarViewProps> = ({
   onOpenAddSession,
   onNavigateToActivities
 }) => {
   const {
-    appConfigs,
     activities,
     teachers,
     sessions,
@@ -37,12 +45,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     currentRole
   } = useApp();
 
-  // Verificar si el calendario está activo en app_config
-  const calendarConfig = appConfigs.find(c => c.config_key === 'google_calendar');
-  const isCalendarActive = calendarConfig ? calendarConfig.is_active : true;
-
-  // Estado del día seleccionado (0 = ayer, 1 = hoy, 2..6 = próximos 5 días)
-  const [selectedDayIndex, setSelectedDayIndex] = useState<number>(1); // Hoy por defecto
+  // Navegación de ventana semanal (0 = [Ayer, Hoy, +1..+5])
+  const [weekOffset, setWeekOffset] = useState<number>(0);
+  const [selectedDayIndex, setSelectedDayIndex] = useState<number>(1);
 
   // Estado para modal de nueva nota
   const [isAddNoteOpen, setIsAddNoteOpen] = useState(false);
@@ -52,130 +57,148 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   const [notePinned, setNotePinned] = useState(false);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('todos');
 
-  // Generar la tira de 7 días: [Ayer, Hoy, +1, +2, +3, +4, +5]
+  // Generar la tira de 7 días: [Ayer, Hoy, +1..+5] desplazada por weekOffset * 7
   const sevenDays = useMemo(() => {
     const today = new Date();
+    const todayIso = toMadridIsoDate(today);
     const days = [];
 
     const dayNamesShort = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
     const monthNamesShort = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
-    // Desde -1 (Ayer) hasta +5 días
-    for (let offset = -1; offset <= 5; offset++) {
+    for (let i = 0; i < 7; i++) {
+      const offset = -1 + i + weekOffset * 7;
       const d = new Date(today);
       d.setDate(today.getDate() + offset);
 
       const dayOfWeekNum = d.getDay();
       const dayOfMonth = d.getDate();
       const monthNum = d.getMonth();
-      const isoDate = d.toISOString().split('T')[0];
+      const isoDate = toMadridIsoDate(d);
 
-      let label = dayNamesShort[dayOfWeekNum];
-      let sublabel = `${dayOfMonth} ${monthNamesShort[monthNum]}`;
+      const yesterdayDate = new Date(today);
+      yesterdayDate.setDate(today.getDate() - 1);
+      const yesterdayIso = toMadridIsoDate(yesterdayDate);
+
       let tag = '';
-
-      if (offset === -1) {
+      if (isoDate === yesterdayIso) {
         tag = 'Ayer';
-      } else if (offset === 0) {
+      } else if (isoDate === todayIso) {
         tag = 'HOY';
       }
 
       days.push({
-        index: offset + 1, // 0..6
+        index: i,
         offset,
         dateObj: d,
         isoDate,
         dayOfWeekNum,
-        dayName: label,
-        sublabel,
+        dayName: dayNamesShort[dayOfWeekNum],
+        sublabel: `${dayOfMonth} ${monthNamesShort[monthNum]}`,
         tag,
-        isToday: offset === 0
+        isToday: isoDate === todayIso
       });
     }
 
     return days;
-  }, []);
+  }, [weekOffset]);
 
   const selectedDay = sevenDays[selectedDayIndex] || sevenDays[1];
 
-  // Mapear eventos / clases para el día seleccionado
-  const eventsForSelectedDay = useMemo(() => {
-    const dayOfWeek = selectedDay.dayOfWeekNum; // 0 = Domingo, 1 = Lunes, etc.
-    const dayNamesSpanish = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
-    const targetDayName = dayNamesSpanish[dayOfWeek];
+  // Mapear actividades locales y sesiones registradas para una fecha concreta
+  const getEventsForDay = useCallback(
+    (dayInfo: (typeof sevenDays)[number]) => {
+      const dayOfWeek = dayInfo.dayOfWeekNum;
+      const dayNamesSpanish = [
+        'domingo',
+        'lunes',
+        'martes',
+        'miércoles',
+        'jueves',
+        'viernes',
+        'sábado'
+      ];
+      const targetDayName = dayNamesSpanish[dayOfWeek];
 
-    const result: CalendarEventItem[] = [];
+      const result: CalendarEventItem[] = [];
 
-    // 1. Actividades regulares que coincidan con el día de la semana
-    activities.forEach(act => {
-      if (!act.active) return;
-      const teacher = teachers.find(t => t.id === act.teacherId);
+      // 1. Actividades locales configuradas en el centro
+      activities.forEach(act => {
+        if (!act.active) return;
+        const teacher = teachers.find(t => t.id === act.teacherId);
 
-      // Comprobar si el horario menciona este día
-      const matchesSchedule = act.schedule.some(s => {
-        const sLower = s.toLowerCase();
-        if (targetDayName === 'miércoles') {
-          return sLower.includes('miercoles') || sLower.includes('miércoles');
-        }
-        if (targetDayName === 'sábado') {
-          return sLower.includes('sabado') || sLower.includes('sábado');
-        }
-        return sLower.includes(targetDayName);
-      });
-
-      if (matchesSchedule || activities.length <= 4) {
-        // Extraer hora si es posible o asignar hora estándar
-        let startTime = '18:00';
-        let endTime = '19:30';
-
-        const scheduleStr = act.schedule[0] || '';
-        const timeMatch = scheduleStr.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
-        if (timeMatch) {
-          startTime = timeMatch[1];
-          endTime = timeMatch[2];
-        }
-
-        result.push({
-          id: `act-${act.id}-${selectedDay.isoDate}`,
-          title: act.name,
-          startTime,
-          endTime,
-          date: selectedDay.isoDate,
-          teacherName: teacher?.name || 'Monitor Triskell',
-          room: act.room,
-          activityName: act.name,
-          category: act.category,
-          billingMode: act.billingMode,
-          price: act.billingMode === 'per_class' ? act.defaultPricePerClass : act.defaultPriceMonthly,
-          description: act.description
+        const matchesSchedule = act.schedule.some(s => {
+          const sLower = s.toLowerCase();
+          if (targetDayName === 'miércoles') {
+            return sLower.includes('miercoles') || sLower.includes('miércoles');
+          }
+          if (targetDayName === 'sábado') {
+            return sLower.includes('sabado') || sLower.includes('sábado');
+          }
+          return sLower.includes(targetDayName);
         });
-      }
-    });
 
-    // 2. Sesiones ya registradas para esta fecha exacta
-    sessions
-      .filter(s => s.date === selectedDay.isoDate)
-      .forEach(sess => {
-        const act = activities.find(a => a.id === sess.activityId);
-        const teacher = teachers.find(t => t.id === sess.teacherId);
-        if (!result.some(r => r.id === `sess-${sess.id}`)) {
+        if (matchesSchedule) {
+          let startTime = '18:00';
+          let endTime = '19:30';
+
+          const scheduleStr = act.schedule[0] || '';
+          const timeMatch = scheduleStr.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+          if (timeMatch) {
+            startTime = timeMatch[1].padStart(5, '0');
+            endTime = timeMatch[2].padStart(5, '0');
+          }
+
           result.push({
-            id: `sess-${sess.id}`,
-            title: sess.topic || act?.name || 'Sesión de Clase',
-            startTime: '19:00',
-            endTime: '20:15',
-            date: sess.date,
-            teacherName: teacher?.name || 'Monitor',
-            room: act?.room || 'Sala Principal',
-            category: act?.category || 'Clase',
-            description: `Sesión de ${sess.durationMinutes} min con ${sess.attendeesCount} alumnos asistentes.`
+            id: `act-${act.id}-${dayInfo.isoDate}`,
+            title: act.name,
+            startTime,
+            endTime,
+            date: dayInfo.isoDate,
+            teacherName: teacher?.name || 'Monitor Triskell',
+            room: act.room,
+            activityName: act.name,
+            category: act.category,
+            billingMode: act.billingMode,
+            price:
+              act.billingMode === 'per_class'
+                ? act.defaultPricePerClass
+                : act.defaultPriceMonthly,
+            description: act.description
           });
         }
       });
 
-    // Ordenar por hora de inicio
-    return result.sort((a, b) => a.startTime.localeCompare(b.startTime));
-  }, [activities, teachers, sessions, selectedDay]);
+      // 2. Sesiones registradas en el centro para esa fecha exacta
+      sessions
+        .filter(s => s.date === dayInfo.isoDate)
+        .forEach(sess => {
+          const act = activities.find(a => a.id === sess.activityId);
+          const teacher = teachers.find(t => t.id === sess.teacherId);
+          if (!result.some(r => r.id === `sess-${sess.id}`)) {
+            result.push({
+              id: `sess-${sess.id}`,
+              title: sess.topic || act?.name || 'Sesión de Clase',
+              startTime: '19:00',
+              endTime: '20:15',
+              date: sess.date,
+              teacherName: teacher?.name || 'Monitor',
+              room: act?.room || 'Sala Principal',
+              category: act?.category || 'Clase',
+              description: `Sesión de ${sess.durationMinutes} min con ${sess.attendeesCount} alumnos asistentes.`
+            });
+          }
+        });
+
+      return result.sort((a, b) => a.startTime.localeCompare(b.startTime));
+    },
+    [activities, teachers, sessions]
+  );
+
+  const eventsForSelectedDay = useMemo(
+    () => getEventsForDay(selectedDay),
+    [getEventsForDay, selectedDay]
+  );
 
   // Filtrado de noticias
   const filteredNotes = useMemo(() => {
@@ -190,7 +213,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     await addNewsNote({
       title: noteTitle.trim(),
       content: noteContent.trim(),
-      date: new Date().toISOString().split('T')[0],
+      date: toMadridIsoDate(new Date()),
       category: noteCategory,
       author: currentRole === 'admin' ? 'Administración Triskell' : 'Equipo Docente',
       pinned: notePinned
@@ -206,39 +229,84 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   return (
     <div className="space-y-6">
       {/* =========================================================================
-          SECCIÓN SUPERIOR: TIRA DE 7 DÍAS (AYER, HOY, +5 DÍAS FUTUROS)
+          SECCIÓN SUPERIOR: CALENDARIO LOCAL + TIRA DE 7 DÍAS
           ========================================================================= */}
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-              <CalendarIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              <CalendarIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <span>Calendario de Actividades & Horarios</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Selecciona cualquier día de la tira para consultar las clases y talleres programados
+              Agenda semanal de talleres y sesiones registradas en A.C. Triskell ({MADRID_TIMEZONE})
             </p>
           </div>
 
-          {!isCalendarActive && (
-            <div className="flex items-center gap-1.5 rounded-xl bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-700 dark:text-amber-300 border border-amber-500/20">
-              <AlertTriangle className="h-4 w-4" />
-              <span>Google Calendar Inactivo en app_config</span>
-            </div>
+          {onOpenAddSession && (currentRole === 'admin' || currentRole === 'teacher') && (
+            <button
+              type="button"
+              onClick={onOpenAddSession}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 text-xs font-bold transition shadow-xs active:scale-95 whitespace-nowrap self-start sm:self-auto"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Registrar Clase Impartida</span>
+            </button>
           )}
         </div>
 
-        {/* LA TIRA DE 7 DÍAS (1: Ayer, 2: Hoy, 3..7: +5 Días) */}
+        {/* Controles de navegación semanal para la tira de 7 días */}
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <button
+            type="button"
+            onClick={() => {
+              setWeekOffset(prev => prev - 1);
+              setSelectedDayIndex(1);
+            }}
+            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+            <span>Semana anterior</span>
+          </button>
+
+          {weekOffset !== 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setWeekOffset(0);
+                setSelectedDayIndex(1);
+              }}
+              className="rounded-xl bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 transition"
+            >
+              Volver a Hoy
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              setWeekOffset(prev => prev + 1);
+              setSelectedDayIndex(1);
+            }}
+            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+          >
+            <span>Semana siguiente</span>
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        {/* LA TIRA DE 7 DÍAS */}
         <div className="grid grid-cols-7 gap-1.5 sm:gap-2.5 overflow-x-auto pt-3 pb-1 no-scrollbar">
           {sevenDays.map((day, idx) => {
             const isSelected = selectedDayIndex === idx;
+            const dayTotalEvents = getEventsForDay(day).length;
 
             return (
               <button
                 key={day.isoDate}
                 type="button"
                 onClick={() => setSelectedDayIndex(idx)}
-                className={`relative flex flex-col items-center justify-center p-2 sm:p-3 rounded-2xl transition-all active:scale-95 text-center min-h-[74px] sm:min-h-[88px] ${
+                className={`relative flex flex-col items-center justify-center p-2 sm:p-3 rounded-2xl transition-all active:scale-95 text-center min-h-[78px] sm:min-h-[92px] ${
                   isSelected
                     ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 ring-2 ring-emerald-500 ring-offset-2 dark:ring-offset-slate-900'
                     : day.isToday
@@ -246,7 +314,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                     : 'bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
-                {/* Etiqueta Superior (AYER, HOY) */}
                 {day.tag && (
                   <span
                     className={`absolute -top-2 rounded-full px-1.5 py-0.2 text-[8px] sm:text-[9px] font-black uppercase tracking-wider ${
@@ -261,24 +328,37 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                   </span>
                 )}
 
-                {/* Día de la semana */}
-                <span className={`text-[10px] sm:text-xs font-bold uppercase tracking-wider ${
-                  isSelected ? 'text-emerald-100' : 'text-slate-500 dark:text-slate-400'
-                }`}>
+                <span
+                  className={`text-[10px] sm:text-xs font-bold uppercase tracking-wider ${
+                    isSelected ? 'text-emerald-100' : 'text-slate-500 dark:text-slate-400'
+                  }`}
+                >
                   {day.dayName}
                 </span>
 
-                {/* Número del día */}
                 <span className="text-base sm:text-2xl font-black mt-0.5 leading-none">
                   {day.dateObj.getDate()}
                 </span>
 
-                {/* Mes corto */}
-                <span className={`text-[9px] sm:text-[10px] font-medium mt-1 truncate ${
-                  isSelected ? 'text-emerald-100' : 'text-slate-400'
-                }`}>
+                <span
+                  className={`text-[9px] sm:text-[10px] font-medium mt-1 truncate ${
+                    isSelected ? 'text-emerald-100' : 'text-slate-400'
+                  }`}
+                >
                   {day.sublabel.split(' ')[1]}
                 </span>
+
+                {dayTotalEvents > 0 && (
+                  <span
+                    className={`mt-1 inline-flex items-center justify-center rounded-full px-1.5 text-[9px] font-black ${
+                      isSelected
+                        ? 'bg-white/20 text-white'
+                        : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                    }`}
+                  >
+                    {dayTotalEvents}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -286,44 +366,37 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       </div>
 
       {/* =========================================================================
-          SECCIÓN CENTRAL: DAY VIEW (VISTA DIARIA PARA EL DÍA SELECCIONADO)
+          SECCIÓN CENTRAL: VISTA DIARIA PARA EL DÍA SELECCIONADO
           ========================================================================= */}
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                Horario & Clases para:
+                Horario & Actividades para:
               </span>
               <span className="rounded-lg bg-emerald-500/10 px-2.5 py-0.5 text-xs font-black text-emerald-800 dark:text-emerald-300 capitalize">
-                {selectedDay.dateObj.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                {selectedDay.dateObj.toLocaleDateString('es-ES', {
+                  weekday: 'long',
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric'
+                })}
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              {eventsForSelectedDay.length} actividades disponibles en este día
+              {eventsForSelectedDay.length} actividades o sesiones programadas
             </p>
           </div>
-
-          {/* Botón rápido para administradores / monitores */}
-          {onOpenAddSession && (currentRole === 'admin' || currentRole === 'teacher') && (
-            <button
-              type="button"
-              onClick={onOpenAddSession}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-50/50 dark:bg-emerald-950/20 px-3.5 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition shrink-0 active:scale-95"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Registrar Clase Impartida</span>
-            </button>
-          )}
         </div>
 
         {eventsForSelectedDay.length === 0 ? (
           <div className="py-12 text-center text-xs text-slate-400 space-y-2">
             <Info className="h-8 w-8 mx-auto text-slate-300 dark:text-slate-600" />
             <p className="font-bold text-slate-600 dark:text-slate-300 text-sm">
-              No hay actividades programadas para este día
+              No hay actividades ni sesiones programadas para este día
             </p>
-            <p>Puedes seleccionar otro día de la barra superior de 7 días o consultar el catálogo general.</p>
+            <p>Selecciona otro día de la tira superior para consultar los horarios del centro.</p>
             {onNavigateToActivities && (
               <button
                 type="button"
@@ -340,42 +413,43 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             {eventsForSelectedDay.map(event => (
               <div
                 key={event.id}
-                className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-slate-50/60 dark:bg-slate-800/40 hover:border-emerald-500/40 transition-all flex flex-col justify-between gap-3 shadow-xs"
+                className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:border-emerald-500/40 p-4 flex flex-col justify-between gap-3 shadow-xs transition-all"
               >
                 <div>
-                  {/* Encabezado: Hora y Categoría */}
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 text-white px-2.5 py-1 text-xs font-black shadow-xs">
                       <Clock className="h-3.5 w-3.5" />
-                      <span>{event.startTime} - {event.endTime}</span>
+                      <span>
+                        {event.startTime} - {event.endTime}
+                      </span>
                     </span>
 
                     {event.category && (
-                      <span className="rounded-md bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold px-2 py-0.5 border border-indigo-500/20 uppercase tracking-wide">
+                      <span className="rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold px-2 py-0.5 border border-emerald-500/20 uppercase tracking-wide">
                         {event.category}
                       </span>
                     )}
                   </div>
 
-                  {/* Título de la actividad */}
                   <h4 className="text-sm font-extrabold text-slate-900 dark:text-white leading-tight">
                     {event.title}
                   </h4>
 
                   {event.description && (
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-3 whitespace-pre-line">
                       {event.description}
                     </p>
                   )}
                 </div>
 
-                {/* Pie: Monitor, Sala y Precio */}
                 <div className="pt-2 border-t border-slate-200/70 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <div className="flex items-center gap-3 text-slate-600 dark:text-slate-300">
-                    <div className="flex items-center gap-1">
-                      <User className="h-3.5 w-3.5 text-indigo-500" />
-                      <span className="font-semibold">{event.teacherName}</span>
-                    </div>
+                  <div className="flex flex-wrap items-center gap-3 text-slate-600 dark:text-slate-300">
+                    {event.teacherName && (
+                      <div className="flex items-center gap-1">
+                        <User className="h-3.5 w-3.5 text-indigo-500" />
+                        <span className="font-semibold">{event.teacherName}</span>
+                      </div>
+                    )}
                     {event.room && (
                       <div className="flex items-center gap-1">
                         <MapPin className="h-3.5 w-3.5 text-slate-400" />
@@ -416,7 +490,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Botón Publicar Nota (Administrador) */}
             {currentRole === 'admin' && (
               <button
                 type="button"
@@ -430,7 +503,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           </div>
         </div>
 
-        {/* Filtros de Categoría */}
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
           {['todos', 'aviso', 'taller', 'noticia', 'general'].map(cat => (
             <button
@@ -448,7 +520,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           ))}
         </div>
 
-        {/* Lista de Notas */}
         {filteredNotes.length === 0 ? (
           <div className="py-8 text-center text-xs text-slate-400">
             No hay notas publicadas en esta categoría actualmente.

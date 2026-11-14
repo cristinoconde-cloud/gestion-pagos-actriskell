@@ -5,15 +5,9 @@ import {
   Settings,
   Plus,
   Save,
-  Trash2,
   CheckCircle2,
-  AlertCircle,
-  Database,
-  Copy,
-  Check,
   ToggleLeft,
   ToggleRight,
-  Sparkles,
   Bell,
   Calendar,
   Newspaper
@@ -29,7 +23,6 @@ export const AdminConfigView: React.FC = () => {
   const [newValue, setNewValue] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [newActive, setNewActive] = useState(true);
-  const [copiedSql, setCopiedSql] = useState(false);
 
   const getEditedValue = (config: AppConfigSetting) => {
     return editingValues[config.config_key] !== undefined
@@ -78,35 +71,6 @@ export const AdminConfigView: React.FC = () => {
     setIsAddModalOpen(false);
   };
 
-  const sqlSnippet = `-- Creación de la tabla app_config en Supabase
-CREATE TABLE IF NOT EXISTS public.app_config (
-  config_key TEXT PRIMARY KEY,
-  config_value TEXT NOT NULL,
-  is_active BOOLEAN NOT NULL DEFAULT true,
-  description TEXT,
-  updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- Habilitar RLS
-ALTER TABLE public.app_config ENABLE ROW LEVEL SECURITY;
-
--- Política de lectura pública
-CREATE POLICY "Lectura app_config para usuarios autenticados" 
-ON public.app_config FOR SELECT TO authenticated USING (true);
-
--- Política de modificación para administradores
-CREATE POLICY "Modificación app_config para administradores" 
-ON public.app_config FOR ALL TO authenticated 
-USING (auth.jwt() ->> 'email' = 'cristino.conde@actriskell.org' OR EXISTS (
-  SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'
-));`;
-
-  const handleCopySql = () => {
-    navigator.clipboard.writeText(sqlSnippet);
-    setCopiedSql(true);
-    setTimeout(() => setCopiedSql(false), 2000);
-  };
-
   // Helper para mostrar iconos temáticos
   const getKeyIcon = (key: string) => {
     if (key.includes('popup') || key.includes('notification')) {
@@ -135,7 +99,7 @@ USING (auth.jwt() ->> 'email' = 'cristino.conde@actriskell.org' OR EXISTS (
             </h2>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Panel exclusivo para administradores. Modifica parámetros de la app, activa calendarios, comunicados emergentes y notas en tiempo real.
+            Panel exclusivo para administradores. Modifica parámetros de la app, comunicados emergentes y notas en tiempo real.
           </p>
         </div>
 
@@ -151,7 +115,9 @@ USING (auth.jwt() ->> 'email' = 'cristino.conde@actriskell.org' OR EXISTS (
 
       {/* Tarjetas de Parámetros de Configuración */}
       <div className="grid grid-cols-1 gap-4">
-        {appConfigs.map(config => {
+        {appConfigs
+          .filter(c => c.config_key !== 'google_calendar')
+          .map(config => {
           const isSaved = saveStatus[config.config_key];
           const currentValue = getEditedValue(config);
           const hasChanged = currentValue !== config.config_value;
@@ -257,32 +223,6 @@ USING (auth.jwt() ->> 'email' = 'cristino.conde@actriskell.org' OR EXISTS (
             </div>
           );
         })}
-      </div>
-
-      {/* Sección SQL para verificación en Supabase */}
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-3 mb-2">
-          <div className="flex items-center gap-2">
-            <Database className="h-4 w-4 text-emerald-600" />
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-              Estructura SQL de la tabla 'app_config' en Supabase
-            </h4>
-          </div>
-          <button
-            type="button"
-            onClick={handleCopySql}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 transition active:scale-95"
-          >
-            {copiedSql ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-            <span>{copiedSql ? 'Copiado' : 'Copiar SQL'}</span>
-          </button>
-        </div>
-        <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-2">
-          La app lee y escribe en la tabla `app_config` de Supabase. Si aún no la has creado en tu proyecto, copia este script y ejecútalo en el SQL Editor de tu consola de Supabase:
-        </p>
-        <pre className="text-[11px] font-mono bg-slate-900 text-slate-200 p-3 rounded-xl overflow-x-auto">
-          {sqlSnippet}
-        </pre>
       </div>
 
       {/* Modal para Crear Nuevo Parámetro */}

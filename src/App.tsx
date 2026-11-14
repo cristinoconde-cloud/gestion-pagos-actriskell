@@ -8,6 +8,7 @@ import { ActivitiesView } from './components/ActivitiesView';
 import { ExpensesView } from './components/ExpensesView';
 import { TeacherPortalView } from './components/TeacherPortalView';
 import { TeacherPayoutsView } from './components/TeacherPayoutsView';
+import { TeacherStudentsView } from './components/TeacherStudentsView';
 import { StudentPortalView } from './components/StudentPortalView';
 import { ProfileView } from './components/ProfileView';
 import { CalendarView } from './components/CalendarView';
@@ -139,11 +140,11 @@ const MainAppContent: React.FC = () => {
       case 'admin':
         return ['dashboard', 'admin-users', 'calendar', 'payments', 'teachers', 'activities', 'expenses', 'admin-config', 'teacher-portal', 'student-portal', 'profile'];
       case 'teacher':
-        return ['teacher-portal', 'calendar', 'activities', 'teacher-payouts', 'profile'];
+        return ['teacher-portal', 'teacher-students', 'calendar', 'activities', 'teacher-payouts', 'profile'];
       case 'student':
         return ['student-portal', 'calendar', 'activities', 'profile'];
       case 'teacher_student':
-        return ['teacher-portal', 'student-portal', 'calendar', 'activities', 'profile'];
+        return ['teacher-portal', 'teacher-students', 'student-portal', 'calendar', 'activities', 'profile'];
       default:
         return ['dashboard', 'calendar', 'profile'];
     }
@@ -389,6 +390,15 @@ const MainAppContent: React.FC = () => {
 
         {currentTab === 'teacher-payouts' && availableTabsForRole.includes('teacher-payouts') && (
           <TeacherPayoutsView />
+        )}
+
+        {currentTab === 'teacher-students' && availableTabsForRole.includes('teacher-students') && (
+          <TeacherStudentsView
+            onOpenEnrollStudent={(activityId?: string) => {
+              setEnrollActivityId(activityId);
+              setIsEnrollStudentOpen(true);
+            }}
+          />
         )}
 
         {currentTab === 'student-portal' && availableTabsForRole.includes('student-portal') && (

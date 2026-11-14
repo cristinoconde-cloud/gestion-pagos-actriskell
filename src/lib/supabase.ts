@@ -225,19 +225,67 @@ export function mapActivityToDb(act: Omit<Activity, 'id'> | Activity) {
 }
 
 export function mapDbStudentToStudent(row: any, enrollments: any[] = []): Student {
-  const studentEnrollments: StudentActivityEnrollment[] = enrollments
-    .filter(e => e.student_id === row.id && (e.active ?? true))
-    .map(e => ({
-      activityId: e.activity_id,
-      customPrice: e.custom_price !== null && e.custom_price !== undefined ? Number(e.custom_price) : undefined,
-      enrolledSince: e.enrolled_since || new Date().toISOString().split('T')[0],
-      billingMode: e.billing_mode || 'monthly'
-    }));
+  const rowEnrollments = enrollments.filter(
+    e => e.student_id === row.id && e.active !== false
+  );
 
-  const status = row.status || 'active';
-  const validationStatus =
-    row.validation_status ||
-    (status === 'pending_validation' ? 'pending' : status === 'inactive' ? 'rejected' : 'validated');
+  const mapEnrollmentItem = (e: any): StudentActivityEnrollment => ({
+    id: e.id || undefined,
+    activityId: e.activity_id,
+    customPrice:
+      e.custom_price !== null && e.custom_price !== undefined
+        ? Number(e.custom_price)
+        : undefined,
+    enrolledSince: e.enrolled_since || new Date().toISOString().split('T')[0],
+    billingMode: e.billing_mode || 'monthly',
+    status:
+      e.status === 'pending' || e.status === 'rejected' || e.status === 'active'
+        ? e.status
+        : 'active',
+    requestedBy: e.requested_by || undefined
+  });
+
+  const studentEnrollments: StudentActivityEnrollment[] = rowEnrollments
+    .filter(e => e.status !== 'pending' && e.status !== 'rejected')
+    .map(mapEnrollmentItem);
+
+  const pendingEnrollments: StudentActivityEnrollment[] = rowEnrollments
+    .filter(e => e.status === 'pending')
+    .map(mapEnrollmentItem);
+
+  const rawNotes = typeof row.notes === 'string' ? row.notes : '';
+  const hasPendingMarker = rawNotes.includes('[Pendiente validación]');
+  const dbStatus = typeof row.status === 'string' ? row.status : 'active';
+  const dbValidationStatus =
+    typeof row.validation_status === 'string' ? row.validation_status : undefined;
+
+  let status: Student['status'];
+  if (
+    dbStatus === 'pending_validation' ||
+    dbStatus === 'pending' ||
+    (hasPendingMarker && (dbStatus === 'trial' || !row.status))
+  ) {
+    status = 'pending_validation';
+  } else if (dbStatus === 'active' || dbStatus === 'inactive' || dbStatus === 'trial') {
+    status = dbStatus;
+  } else {
+    status = 'active';
+  }
+
+  let validationStatus: NonNullable<Student['validationStatus']>;
+  if (status === 'pending_validation') {
+    validationStatus = dbValidationStatus === 'rejected' ? 'rejected' : 'pending';
+  } else if (dbValidationStatus === 'validated' || dbValidationStatus === 'rejected' || dbValidationStatus === 'pending') {
+    if (status === 'active' && dbValidationStatus === 'pending' && !hasPendingMarker) {
+      validationStatus = dbValidationStatus;
+    } else {
+      validationStatus = dbValidationStatus;
+    }
+  } else if (status === 'inactive') {
+    validationStatus = 'rejected';
+  } else {
+    validationStatus = 'validated';
+  }
 
   return {
     id: row.id,
@@ -249,9 +297,14 @@ export function mapDbStudentToStudent(row: any, enrollments: any[] = []): Studen
     profileId: row.profile_id || undefined,
     registeredBy: row.registered_by || undefined,
     validatedAt: row.validated_at || undefined,
-    registeredAt: row.registered_at || new Date().toISOString().split('T')[0],
+    registeredAt:
+      row.registered_at ||
+      (typeof row.created_at === 'string'
+        ? row.created_at.split('T')[0]
+        : new Date().toISOString().split('T')[0]),
     activities: studentEnrollments,
-    notes: row.notes || ''
+    pendingEnrollments,
+    notes: rawNotes
   };
 }
 
@@ -323,7 +376,7 @@ export function mapDbExpenseToExpense(row: any): CenterExpense {
     amount: Number(row.amount) || 0,
     date: row.date,
     periodMonth: row.period_month,
-    paymentMethod: row.payment_method || 'transfer',
+    paymentMethod: row.payment_method || 'cash',
     status: row.status || 'paid',
     invoiceNumber: row.invoice_number || '',
     notes: row.notes || ''
@@ -357,7 +410,7 @@ export function mapDbPayoutToPayout(row: any): TeacherPayout {
     totalSettled: Number(row.total_settled) || 0,
     status: row.status || 'pending',
     settledDate: row.settled_date || undefined,
-    paymentMethod: row.payment_method || 'transfer',
+    paymentMethod: row.payment_method || 'cash',
     notes: row.notes || ''
   };
 }

@@ -4,7 +4,6 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
-  Building,
   Sparkles,
   MapPin,
   ChevronDown,
@@ -13,9 +12,7 @@ import {
   Smartphone,
   Copy,
   Check,
-  Eye,
-  EyeOff,
-  User
+  X
 } from 'lucide-react';
 import { Activity } from '../types';
 
@@ -30,23 +27,45 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
     selectedPeriod,
     currentStudentId,
     setCurrentStudentId,
-    currentRole
+    currentRole,
+    currentUser,
+    cancelActivityEnrollmentRequest
   } = useApp();
 
   // Estados de acordeones replegados por defecto
   const [isCuotasOpen, setIsCuotasOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [cancellingActivityId, setCancellingActivityId] = useState<string | null>(null);
 
   // Modal / Detalle de "Datos actividad"
   const [selectedActivityForModal, setSelectedActivityForModal] = useState<Activity | null>(null);
   const [copiedBizum, setCopiedBizum] = useState(false);
 
-  const currentStudent = students.find(s => s.id === currentStudentId) || students[0];
+  const currentStudent =
+    (currentRole !== 'admin' && currentUser
+      ? students.find(
+          s =>
+            (currentUser.studentId && s.id === currentUser.studentId) ||
+            s.profileId === currentUser.id ||
+            (currentUser.email &&
+              s.email.trim().toLowerCase() === currentUser.email.trim().toLowerCase())
+        )
+      : undefined) ||
+    students.find(s => s.id === currentStudentId) ||
+    students[0];
 
   // Actividades en las que está matriculado este alumno
   const enrolledActivities = activities.filter(act =>
     currentStudent?.activities.some(enroll => enroll.activityId === act.id)
   );
+
+  // Solicitudes de inscripción pendientes enviadas por este alumno
+  const pendingRequestedActivities = (currentStudent?.pendingEnrollments || [])
+    .map(enr => ({
+      enrollment: enr,
+      activity: activities.find(a => a.id === enr.activityId)
+    }))
+    .filter(item => Boolean(item.activity));
 
   // Pagos del alumno en el período actual
   const myPeriodPayments = payments.filter(
@@ -71,6 +90,13 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
         label: 'Pagado',
         className: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
         icon: 'paid' as const
+      };
+    }
+    if (actPayments.some(p => p.status === 'partial')) {
+      return {
+        label: 'Pago parcial',
+        className: 'bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/30',
+        icon: 'partial' as const
       };
     }
     if (actPayments.some(p => p.status === 'overdue')) {
@@ -214,6 +240,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                         className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold shrink-0 whitespace-nowrap ${paymentBadge.className}`}
                       >
                         {paymentBadge.icon === 'paid' && <CheckCircle2 className="h-3 w-3" />}
+                        {paymentBadge.icon === 'partial' && <Clock className="h-3 w-3" />}
                         {paymentBadge.icon === 'alert' && <AlertCircle className="h-3 w-3" />}
                         {paymentBadge.icon === 'clock' && <Clock className="h-3 w-3" />}
                         <span>{paymentBadge.label}</span>
@@ -248,14 +275,6 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                           Sala: <strong className="text-slate-700 dark:text-slate-300">{act.room}</strong>
                         </span>
                       </div>
-                    </div>
-
-                    {/* Importe Oculto por Privacidad (Protegido) */}
-                    <div className="text-right">
-                      <span className="inline-flex items-center gap-1 rounded-md bg-slate-200/60 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-400">
-                        <EyeOff className="h-3 w-3" />
-                        Privado
-                      </span>
                     </div>
                   </div>
 
@@ -323,32 +342,85 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
         )}
       </div>
 
+      {/* Solicitudes pendientes del alumno con opción de cancelar */}
+      {pendingRequestedActivities.length > 0 && currentStudent && (
+        <div className="rounded-2xl border border-amber-500/35 bg-amber-50/70 dark:bg-amber-950/20 p-3.5 sm:p-4 shadow-xs space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-xs sm:text-sm font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+              <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <span>Solicitudes de inscripción pendientes ({pendingRequestedActivities.length})</span>
+            </h3>
+          </div>
+          <div className="divide-y divide-amber-500/20">
+            {pendingRequestedActivities.map(({ enrollment, activity }) => {
+              if (!activity) return null;
+              const t = teachers.find(tc => tc.id === activity.teacherId);
+              const isBusy = cancellingActivityId === activity.id;
+              return (
+                <div
+                  key={activity.id}
+                  className="py-2 flex items-center justify-between gap-2 text-xs"
+                >
+                  <div className="min-w-0 flex-1">
+                    <span className="font-bold text-slate-900 dark:text-white truncate block">
+                      {activity.name}
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate block">
+                      {t?.name ? `${t.name} · ` : ''}Solicitada el {enrollment.enrolledSince}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    onClick={async () => {
+                      setCancellingActivityId(activity.id);
+                      try {
+                        await cancelActivityEnrollmentRequest(currentStudent.id, activity.id);
+                      } finally {
+                        setCancellingActivityId(null);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 rounded-xl border border-rose-300 dark:border-rose-800 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition shrink-0 whitespace-nowrap disabled:opacity-50"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    <span>{isBusy ? 'Cancelando...' : 'Cancelar'}</span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* SECCIÓN 2: Estado de tus cuotas (Acordeón replegado por defecto) */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
         <button
+          type="button"
           onClick={() => setIsCuotasOpen(!isCuotasOpen)}
-          className="w-full p-3.5 sm:p-5 text-left flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
+          aria-expanded={isCuotasOpen}
+          aria-label={isCuotasOpen ? 'Plegar estado de cuotas' : 'Desplegar estado de cuotas'}
+          className="w-full p-3.5 sm:p-5 text-left flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
         >
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="h-9 w-9 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold shrink-0">
               💳
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-nowrap">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
                   Estado de tus cuotas ({selectedPeriod})
                 </h3>
                 {pendingCount > 0 ? (
-                  <span className="rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[10px] font-bold">
+                  <span className="inline-flex items-center rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap shrink-0">
                     {pendingCount} pendiente{pendingCount > 1 ? 's' : ''}
                   </span>
                 ) : (
-                  <span className="rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 text-[10px] font-bold">
+                  <span className="inline-flex items-center rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap shrink-0">
                     Al día
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
                 {isCuotasOpen
                   ? 'Desglose detallado de cuotas emitidas este mes'
                   : 'Pulsa para desplegar tus cuotas del mes actual'}
@@ -356,12 +428,12 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-slate-400">
-            <span className="text-xs font-semibold hidden sm:inline">
-              {isCuotasOpen ? 'Plegar' : 'Ver cuotas'}
-            </span>
+          <span
+            aria-hidden="true"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 shrink-0"
+          >
             {isCuotasOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
-          </div>
+          </span>
         </button>
 
         {isCuotasOpen && (
@@ -374,6 +446,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
               ) : (
                 myPeriodPayments.map(p => {
                   const isPaid = p.status === 'paid';
+                  const isPartial = p.status === 'partial';
                   const act = activities.find(a => a.id === p.activityId);
                   const teacher = teachers.find(t => t.id === act?.teacherId);
 
@@ -383,6 +456,8 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                       className={`rounded-xl border p-4 transition ${
                         isPaid
                           ? 'border-emerald-500/30 bg-emerald-50/40 dark:bg-emerald-950/20'
+                          : isPartial
+                          ? 'border-orange-500/30 bg-orange-50/40 dark:bg-orange-950/20'
                           : 'border-amber-500/30 bg-amber-50/40 dark:bg-amber-950/20'
                       }`}
                     >
@@ -399,18 +474,23 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                           </p>
                         </div>
 
-                        <div className="text-right">
-                          <span className="text-xl font-black text-slate-900 dark:text-white block">
+                        <div className="text-right shrink-0">
+                          <span className="text-xl font-black text-slate-900 dark:text-white block whitespace-nowrap">
                             {p.amount.toFixed(2)} €
                           </span>
                           {isPaid ? (
-                            <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400 text-xs">
-                              <CheckCircle2 className="h-3.5 w-3.5" />
+                            <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400 text-xs whitespace-nowrap">
+                              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                               Abonado
                             </span>
+                          ) : isPartial ? (
+                            <span className="inline-flex items-center gap-1 font-bold text-orange-600 dark:text-orange-400 text-xs whitespace-nowrap">
+                              <Clock className="h-3.5 w-3.5 shrink-0" />
+                              Pago parcial
+                            </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 font-bold text-amber-600 dark:text-amber-400 text-xs">
-                              <Clock className="h-3.5 w-3.5" />
+                            <span className="inline-flex items-center gap-1 font-bold text-amber-600 dark:text-amber-400 text-xs whitespace-nowrap">
+                              <Clock className="h-3.5 w-3.5 shrink-0" />
                               Pendiente
                             </span>
                           )}
@@ -418,15 +498,28 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                       </div>
 
                       {isPaid ? (
-                        <div className="mt-4 pt-3 border-t border-emerald-200/50 dark:border-emerald-800/40 flex items-center justify-between text-xs">
-                          <span className="text-slate-600 dark:text-slate-300 text-xs font-medium">
-                            Abonado el {p.paymentDate} · {p.paymentMethod}
+                        <div className="mt-4 pt-3 border-t border-emerald-200/50 dark:border-emerald-800/40 flex items-center justify-between gap-2 text-xs">
+                          <span className="text-slate-600 dark:text-slate-300 text-xs font-medium min-w-0">
+                            Abonado el {p.paymentDate} · {p.paymentMethod === 'cash' ? 'En Mano' : p.paymentMethod}
                             {p.collectedByTeacher && ' (en mano al monitor)'}
                           </span>
-                          <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400 text-xs">
-                            <CheckCircle2 className="h-4 w-4" />
+                          <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400 text-xs whitespace-nowrap shrink-0">
+                            <CheckCircle2 className="h-4 w-4 shrink-0" />
                             Comprobado
                           </span>
+                        </div>
+                      ) : isPartial ? (
+                        <div className="mt-4 pt-3 border-t border-orange-200/60 dark:border-orange-800/40 text-xs space-y-1.5">
+                          <div className="flex items-center justify-between gap-2 text-orange-800 dark:text-orange-300 font-medium">
+                            <span className="min-w-0">
+                              Abono parcial el {p.paymentDate || '—'} · {p.paymentMethod === 'cash' ? 'En Mano' : p.paymentMethod}
+                              {p.collectedByTeacher && ' (en mano al monitor)'}
+                            </span>
+                            <span className="font-bold whitespace-nowrap shrink-0">Resto pendiente</span>
+                          </div>
+                          {p.notes && (
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400">{p.notes}</p>
+                          )}
                         </div>
                       ) : (
                         <div className="mt-4 pt-3 border-t border-amber-200/60 dark:border-amber-800/40 text-xs space-y-2">
@@ -519,17 +612,17 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                         {p.activityName} · {p.periodMonth}
                       </span>
                       <span className="text-[11px] text-slate-400 block">
-                        Abonado el {p.paymentDate} mediante {p.paymentMethod}
+                        Abonado el {p.paymentDate} mediante {p.paymentMethod === 'cash' ? 'En Mano' : p.paymentMethod}
                         {p.collectedByTeacher && ' (en mano al monitor)'}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                      <span className="font-extrabold text-sm text-slate-900 dark:text-white">
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="font-extrabold text-sm text-slate-900 dark:text-white whitespace-nowrap">
                         {p.amount.toFixed(2)} €
                       </span>
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
-                        <CheckCircle2 className="h-3.5 w-3.5" />
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                         Liquidado
                       </span>
                     </div>

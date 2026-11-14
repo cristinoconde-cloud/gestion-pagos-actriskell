@@ -15,7 +15,9 @@ import {
   MessageCircle,
   Plus,
   UserCheck,
-  UserX
+  UserX,
+  Check,
+  X
 } from 'lucide-react';
 
 interface DashboardViewProps {
@@ -43,16 +45,37 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     teacherSummaries,
     students,
     activities,
-    validatePendingStudent
+    teachers,
+    validatePendingStudent,
+    confirmActivityEnrollment,
+    rejectActivityEnrollment
   } = useApp();
 
   // Alumnos con pagos pendientes en este mes
   const pendingPayments = periodPayments.filter(p => p.status === 'pending' || p.status === 'overdue');
-  const paidPayments = periodPayments.filter(p => p.status === 'paid');
+  const paidPayments = periodPayments.filter(p => p.status === 'paid' || p.status === 'partial');
 
   // Altas rápidas pendientes de confirmación definitiva por el Administrador
   const pendingValidationStudents = students.filter(
     s => s.status === 'pending_validation' || s.validationStatus === 'pending'
+  );
+
+  // Solicitudes de inscripción a talleres enviadas por alumnos
+  const pendingEnrollmentRequests = students.flatMap(st =>
+    (st.pendingEnrollments || [])
+      .map(enr => {
+        const act = activities.find(a => a.id === enr.activityId);
+        if (!act) return null;
+        const teacher = teachers.find(t => t.id === act.teacherId);
+        return {
+          student: st,
+          activityId: act.id,
+          activityName: act.name,
+          teacherName: teacher?.name || 'Sin monitor',
+          enrolledSince: enr.enrolledSince
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
   );
 
   // Profesores con saldo pendiente de abonar
@@ -312,6 +335,77 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Solicitudes de inscripción a talleres enviadas por alumnos */}
+      {pendingEnrollmentRequests.length > 0 && (
+        <div className="rounded-2xl border border-indigo-500/35 bg-indigo-50/60 dark:bg-indigo-950/20 p-5 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-indigo-500/20">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Solicitudes de Inscripción a Talleres ({pendingEnrollmentRequests.length})
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  Alumnos esperando confirmación para entrar en una actividad
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onNavigateToTab('admin-users')}
+              className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline self-start sm:self-auto"
+            >
+              Ver en Usuarios y Socios
+            </button>
+          </div>
+
+          <div className="mt-3 divide-y divide-indigo-500/15">
+            {pendingEnrollmentRequests.map(req => (
+              <div
+                key={`${req.student.id}-${req.activityId}`}
+                className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+              >
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-slate-900 dark:text-white text-sm">
+                      {req.student.name}
+                    </span>
+                    <span className="rounded-md bg-indigo-500/15 px-2 py-0.5 text-[10px] font-bold text-indigo-800 dark:text-indigo-300">
+                      {req.activityName}
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      Monitor: <strong>{req.teacherName}</strong>
+                    </span>
+                  </div>
+                  <div className="text-slate-500 dark:text-slate-400 mt-0.5">
+                    {[req.student.phone, req.student.email].filter(Boolean).join(' · ') || 'Sin datos de contacto'} · Solicitada el {req.enrolledSince}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => rejectActivityEnrollment(req.student.id, req.activityId)}
+                    className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 font-semibold text-slate-700 dark:text-slate-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:text-rose-700 transition"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    <span>Rechazar</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => confirmActivityEnrollment(req.student.id, req.activityId)}
+                    className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 font-bold text-white hover:bg-emerald-700 shadow-xs transition"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                    <span>Confirmar plaza</span>
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

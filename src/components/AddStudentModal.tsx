@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Student, StudentStatus } from '../types';
-import { X, Check } from 'lucide-react';
+import { X, Check, AlertCircle } from 'lucide-react';
 
 interface AddStudentModalProps {
   isOpen: boolean;
@@ -10,12 +10,14 @@ interface AddStudentModalProps {
 }
 
 export const AddStudentModal: React.FC<AddStudentModalProps> = ({ isOpen, onClose, studentToEdit }) => {
-  const { activities, addStudent, updateStudent } = useApp();
+  const { activities, addStudent, updateStudent, currentRole } = useApp();
+  const isTeacherRole = currentRole === 'teacher' || currentRole === 'teacher_student';
+  const defaultNewStatus: StudentStatus = isTeacherRole ? 'pending_validation' : 'active';
 
   const [name, setName] = useState(studentToEdit?.name || '');
   const [email, setEmail] = useState(studentToEdit?.email || '');
   const [phone, setPhone] = useState(studentToEdit?.phone || '');
-  const [status, setStatus] = useState<StudentStatus>(studentToEdit?.status || 'active');
+  const [status, setStatus] = useState<StudentStatus>(studentToEdit?.status || defaultNewStatus);
   const [notes, setNotes] = useState(studentToEdit?.notes || '');
   const [selectedActivityIds, setSelectedActivityIds] = useState<string[]>(
     studentToEdit?.activities.map(a => a.activityId) || []
@@ -26,13 +28,15 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({ isOpen, onClos
       return acc;
     }, {} as Record<string, number>) || {}
   );
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
     setName(studentToEdit?.name || '');
     setEmail(studentToEdit?.email || '');
     setPhone(studentToEdit?.phone || '');
-    setStatus(studentToEdit?.status || 'active');
+    setStatus(studentToEdit?.status || defaultNewStatus);
     setNotes(studentToEdit?.notes || '');
     setSelectedActivityIds(studentToEdit?.activities.map(a => a.activityId) || []);
     setCustomPrices(
@@ -41,7 +45,9 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({ isOpen, onClos
         return acc;
       }, {} as Record<string, number>) || {}
     );
-  }, [isOpen, studentToEdit]);
+    setIsSaving(false);
+    setErrorMsg(null);
+  }, [isOpen, studentToEdit, defaultNewStatus]);
 
   if (!isOpen) return null;
 
@@ -51,9 +57,12 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({ isOpen, onClos
     );
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || isSaving) return;
+
+    setIsSaving(true);
+    setErrorMsg(null);
 
     const todayStr = new Date().toISOString().split('T')[0];
     const enrolledList = selectedActivityIds.map(actId => {
@@ -67,27 +76,41 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({ isOpen, onClos
       };
     });
 
-    if (studentToEdit) {
-      updateStudent(studentToEdit.id, {
-        name: name.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
-        status,
-        notes: notes.trim(),
-        activities: enrolledList
-      });
-    } else {
-      addStudent({
-        name: name.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
-        status,
-        activities: enrolledList,
-        notes: notes.trim()
-      });
-    }
+    const cleanedNotes =
+      status === 'pending_validation'
+        ? notes.trim()
+        : notes.replace(/\[Pendiente validación\]/gi, '').trim();
 
-    onClose();
+    try {
+      const res = studentToEdit
+        ? await updateStudent(studentToEdit.id, {
+            name: name.trim(),
+            email: email.trim(),
+            phone: phone.trim(),
+            status,
+            notes: cleanedNotes,
+            activities: enrolledList
+          })
+        : await addStudent({
+            name: name.trim(),
+            email: email.trim(),
+            phone: phone.trim(),
+            status,
+            activities: enrolledList,
+            notes: cleanedNotes
+          });
+
+      if (!res.success) {
+        setErrorMsg(res.error || 'No se pudieron guardar los cambios en la base de datos.');
+        return;
+      }
+
+      onClose();
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Error inesperado al guardar la ficha.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -117,6 +140,12 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({ isOpen, onClos
         {/* Formulario con cuerpo escroleable */}
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto overscroll-contain p-5 space-y-4">
+            {errorMsg && (
+              <div className="rounded-xl border border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/40 px-3 py-2.5 text-xs text-rose-800 dark:text-rose-200 flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span className="font-semibold">{errorMsg}</span>
+              </div>
+            )}
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 Nombre Completo *
@@ -245,17 +274,25 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({ isOpen, onClos
           <div className="sticky bottom-0 z-10 px-5 py-3 border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md flex items-center justify-end gap-3 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             <button
               type="button"
+              disabled={isSaving}
               onClick={onClose}
-              className="flex-1 sm:flex-none rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-[44px] flex items-center justify-center"
+              className="flex-1 sm:flex-none rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-[44px] flex items-center justify-center disabled:opacity-50"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition min-h-[44px]"
+              disabled={isSaving}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition min-h-[44px] disabled:opacity-60"
             >
               <Check className="h-4 w-4" />
-              <span>{studentToEdit ? 'Actualizar Alumno' : 'Registrar Alumno'}</span>
+              <span>
+                {isSaving
+                  ? 'Guardando...'
+                  : studentToEdit
+                  ? 'Actualizar Alumno'
+                  : 'Registrar Alumno'}
+              </span>
             </button>
           </div>
         </form>

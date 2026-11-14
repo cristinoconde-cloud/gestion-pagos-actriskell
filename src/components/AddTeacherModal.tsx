@@ -22,7 +22,7 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
   const [fixedMonthlyRate, setFixedMonthlyRate] = useState<number>(teacherToEdit?.fixedMonthlyRate || 400);
   const [revenueSharePercent, setRevenueSharePercent] = useState<number>(teacherToEdit?.revenueSharePercent || 60);
   const [preferredPaymentMethod, setPreferredPaymentMethod] = useState<PaymentMethod>(
-    teacherToEdit?.preferredPaymentMethod || 'transfer'
+    teacherToEdit?.preferredPaymentMethod || 'cash'
   );
   const [collectionType, setCollectionType] = useState<'personal' | 'association'>(
     teacherToEdit?.collectionType || 'personal'
@@ -40,7 +40,7 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
     setRatePerClass(teacherToEdit?.ratePerClass ?? 30);
     setFixedMonthlyRate(teacherToEdit?.fixedMonthlyRate ?? 400);
     setRevenueSharePercent(teacherToEdit?.revenueSharePercent ?? 60);
-    setPreferredPaymentMethod(teacherToEdit?.preferredPaymentMethod || 'transfer');
+    setPreferredPaymentMethod(teacherToEdit?.preferredPaymentMethod || 'cash');
     setCollectionType(teacherToEdit?.collectionType || 'personal');
     setBankAccount(teacherToEdit?.bankAccount || '');
     setActive(teacherToEdit?.active ?? true);
@@ -246,8 +246,8 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
                   onChange={e => setPreferredPaymentMethod(e.target.value as PaymentMethod)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
                 >
+                  <option value="cash">En Mano</option>
                   <option value="transfer">Transferencia bancaria</option>
-                  <option value="cash">Efectivo en mano</option>
                   <option value="bizum">Bizum</option>
                 </select>
               </div>
